@@ -18,6 +18,11 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
+      <groupId>org.nuxeo.ecm.platform</groupId>
+      <artifactId>nuxeo-platform-login-jwt</artifactId>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
       <groupId>org.nuxeo.ecm.automation</groupId>
       <artifactId>nuxeo-automation-core</artifactId>
       <scope>provided</scope>

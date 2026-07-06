@@ -26,6 +26,7 @@ import org.nuxeo.ecm.core.convert.api.ConverterCheckResult;
 import org.nuxeo.ecm.core.convert.extension.ConverterDescriptor;
 import org.nuxeo.ecm.core.convert.extension.ExternalConverter;
 import org.nuxeo.ecm.core.io.download.DownloadService;
+import org.nuxeo.ecm.onlyoffice.jwt.OnlyOfficeJwt;
 import org.nuxeo.ecm.platform.mimetype.interfaces.MimetypeRegistry;
 import org.nuxeo.ecm.tokenauth.service.TokenAuthenticationService;
 import org.nuxeo.runtime.api.Framework;
@@ -75,6 +76,8 @@ public class OnlyOfficeConverter implements ExternalConverter {
 
     private ObjectReader responseReader = null;
 
+    private ObjectMapper mapper = null;
+
     private List<ConversionCompatibility> compat = null;
 
     public OnlyOfficeConverter() {
@@ -95,6 +98,7 @@ public class OnlyOfficeConverter implements ExternalConverter {
         }
 
         var mapper = new ObjectMapper();
+        this.mapper = mapper;
         this.requestWriter = mapper.writerFor(ConversionRequest.class);
         this.responseReader = mapper.readerFor(ConversionResponse.class);
 
@@ -335,7 +339,21 @@ public class OnlyOfficeConverter implements ExternalConverter {
     private ConversionResponse submitRequest(String request) throws IOException {
         var post = new HttpPost(this.endpoint);
         post.setHeader("Accept", "application/json");
-        post.setEntity(new StringEntity(request, ContentType.APPLICATION_JSON));
+
+        // When JWT is enabled, ONLYOFFICE (7.1+) expects the token in the body for
+        // POST requests: sign the request payload, add it back as a `token` field,
+        // and also set the header token (some Document Server configs require both).
+        String body = request;
+        if (OnlyOfficeJwt.isEnabled()) {
+            Map<String, Object> payload = this.mapper.readValue(request, new TypeReference<Map<String, Object>>() {
+            });
+            String jwt = OnlyOfficeJwt.sign(payload);
+            payload.put("token", jwt);
+            body = this.mapper.writeValueAsString(payload);
+            post.setHeader(OnlyOfficeJwt.headerName(), OnlyOfficeJwt.headerPrefix() + jwt);
+        }
+
+        post.setEntity(new StringEntity(body, ContentType.APPLICATION_JSON));
         try (CloseableHttpClient httpClient = HttpClientBuilder.create().build();
                 CloseableHttpResponse response = httpClient.execute(post);
                 InputStream content = response.getEntity().getContent()) {

@@ -3,8 +3,10 @@ package org.nuxeo.ecm.restapi.server.jaxrs;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import jakarta.ws.rs.Consumes;
@@ -14,6 +16,8 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.HttpHeaders;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.core.Response.Status;
@@ -39,6 +43,8 @@ import org.nuxeo.ecm.core.api.VersioningOption;
 import org.nuxeo.ecm.core.api.blobholder.BlobHolder;
 import org.nuxeo.ecm.core.api.versioning.VersioningService;
 import org.nuxeo.ecm.core.schema.FacetNames;
+import org.nuxeo.ecm.onlyoffice.jwt.OnlyOfficeJwt;
+import org.nuxeo.ecm.onlyoffice.jwt.OnlyOfficeJwtException;
 import org.nuxeo.ecm.platform.mimetype.MimetypeNotFoundException;
 import org.nuxeo.ecm.platform.mimetype.interfaces.MimetypeRegistry;
 import org.nuxeo.ecm.tokenauth.service.TokenAuthenticationService;
@@ -74,14 +80,11 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
 
     protected boolean versionOnSave = false;
 
-    private static final ObjectReader CALLBACK;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    private static final ObjectReader CALLBACK = MAPPER.readerFor(OnlyOfficeCallback.class);
 
     private static final AtomicBoolean CONNECTED = new AtomicBoolean(false);
-
-    static {
-        var mapper = new ObjectMapper();
-        CALLBACK = mapper.readerFor(OnlyOfficeCallback.class);
-    }
 
     /*
      * (non-Javadoc)
@@ -138,7 +141,8 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
     @POST
     @Path("callback/{id}/{xpath:((?:(?!/@).)*)}")
     @Consumes(MediaType.APPLICATION_JSON)
-    public Response postCallback(@PathParam("id") String id, @PathParam("xpath") String xpath, InputStream input) {
+    public Response postCallback(@PathParam("id") String id, @PathParam("xpath") String xpath,
+            @Context HttpHeaders headers, InputStream input) {
 
         /*
          * (from https://api.onlyoffice.com/editors/callback) Defines the status of the document. Can have the following
@@ -148,8 +152,17 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
          * the document.
          */
         try {
-            String json = IOUtils.toString(input, Charset.defaultCharset());
+            String json = IOUtils.toString(input, StandardCharsets.UTF_8);
             OnlyOfficeCallback callback = CALLBACK.readValue(json);
+
+            // Verify the ONLYOFFICE JWT before touching any document. In 7.1+
+            // tokenRequiredParams mode the token payload is the authoritative
+            // callback, so rebuild the DTO from the verified claims.
+            if (OnlyOfficeJwt.isEnabled()) {
+                String authHeader = headers.getHeaderString(OnlyOfficeJwt.headerName());
+                Map<String, Object> claims = OnlyOfficeJwt.verify(callback.getToken(), authHeader);
+                callback = CALLBACK.readValue(MAPPER.writeValueAsString(claims));
+            }
 
             if (LOG.isDebugEnabled()) {
                 LOG.debug("JSON: {}", json);
@@ -199,6 +212,11 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
 
                     var get = new HttpGet(callback.getUrl());
                     get.setHeader("Accept", MediaType.WILDCARD);
+                    // ONLYOFFICE verifies the token in the header for GET requests.
+                    if (OnlyOfficeJwt.isEnabled()) {
+                        get.setHeader(OnlyOfficeJwt.headerName(),
+                                OnlyOfficeJwt.authorizationHeaderValue(Map.of("url", callback.getUrl())));
+                    }
                     Blob saved;
                     try (CloseableHttpClient httpClient = HttpClientBuilder.create().build();
                             CloseableHttpResponse response = httpClient.execute(get);
@@ -228,6 +246,9 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
                 session.saveDocument(model);
                 session.save();
             }
+        } catch (OnlyOfficeJwtException jwtEx) {
+            LOG.warn("ONLYOFFICE callback JWT verification failed", jwtEx);
+            return Response.status(Status.UNAUTHORIZED).entity("{\"error\":1}").build();
         } catch (IOException iox) {
             LOG.error("Error saving ONLYOFFICE callback", iox);
             return Response.status(Status.INTERNAL_SERVER_ERROR).entity("{\"error\":1}").build();
@@ -304,6 +325,158 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
         return null;
     }
 
+    private static String stripTrailingSlash(String url) {
+        if (url == null) {
+            return null;
+        }
+        url = url.trim();
+        if (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+        return url;
+    }
+
+    /**
+     * Builds the ONLYOFFICE editor config (as a JSON object), signed with a JWT when JWT is enabled.
+     * <p>
+     * The config is assembled server-side (rather than in the JSP) because the JWT must be signed with the shared
+     * secret, which must never reach the browser. The document/callback URLs use the internal (container-facing) base
+     * ({@code onlyoffice.url.nuxeo}, falling back to {@code nuxeo.url}); the "Open in Nuxeo" share link uses the public
+     * base ({@code nuxeo.url}). Client-only fields ({@code type}, {@code events}) are added by the JSP.
+     *
+     * @param id document ID
+     * @param xpath blob xpath
+     * @param mode editor mode ({@code desktop} / {@code embedded})
+     * @return the signed config JSON
+     */
+    @GET
+    @Path("config/{id}/{xpath:((?:(?!/@).)*)}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getConfig(@PathParam("id") String id, @PathParam("xpath") String xpath,
+            @QueryParam("mode") String mode) {
+
+        if (StringUtils.isBlank(id)) {
+            return Response.status(Status.NOT_FOUND).build();
+        }
+        if (StringUtils.isBlank(xpath)) {
+            xpath = "file:content";
+        }
+        if (StringUtils.isBlank(mode)) {
+            mode = "desktop";
+        }
+
+        try {
+            CoreSession session = getContext().getCoreSession();
+            DocumentModel model = session.getDocument(new IdRef(id));
+
+            Blob blob = (Blob) model.getPropertyValue(xpath);
+            if (blob == null) {
+                BlobHolder bh = model.getAdapter(BlobHolder.class);
+                if (bh != null) {
+                    blob = bh.getBlob();
+                }
+            }
+            if (blob == null) {
+                LOG.warn("Blob not found for OnlyOffice editor: {}/{}", id, xpath);
+                return Response.status(Status.NOT_FOUND).build();
+            }
+
+            String documentType = getOfficeType(blob.getMimeType());
+            if (documentType == null) {
+                return Response.status(Status.UNSUPPORTED_MEDIA_TYPE)
+                               .entity("mime-type is not supported: " + blob.getMimeType())
+                               .build();
+            }
+
+            String user = getContext().getPrincipal().getName();
+            TokenAuthenticationService tokenSvc = Framework.getService(TokenAuthenticationService.class);
+            String token = tokenSvc.acquireToken(user, APP_NAME, "editor", "Browser", "rw");
+
+            // Public base = browser-facing (nuxeo.url); internal base =
+            // container-facing (onlyoffice.url.nuxeo, falling back to nuxeo.url).
+            String publicBase = stripTrailingSlash(Framework.getProperty("nuxeo.url", "http://localhost:8080/nuxeo/"));
+            String internalBase = stripTrailingSlash(Framework.getProperty("onlyoffice.url.nuxeo"));
+            if (internalBase == null) {
+                internalBase = publicBase;
+            }
+
+            String fname = blob.getFilename();
+            String fileType = extensionOf(fname);
+            boolean writable = !"embedded".equals(mode);
+
+            String blobUrl = internalBase + "/nxfile/default/" + id + "/" + xpath + "/" + fname + "?inline=true&token="
+                    + token;
+            String callbackUrl = internalBase + "/api/v1/onlyoffice/callback/" + id + "/" + xpath + "?token=" + token;
+            String shareUrl = publicBase + "/ui/#!/doc/" + id;
+
+            Map<String, Object> permissions = new LinkedHashMap<>();
+            permissions.put("chat", writable);
+            permissions.put("comment", writable);
+            permissions.put("edit", writable);
+            permissions.put("review", writable);
+            permissions.put("print", true);
+            permissions.put("download", true);
+
+            Map<String, Object> document = new LinkedHashMap<>();
+            document.put("fileType", fileType);
+            document.put("key", blob.getDigest());
+            document.put("permissions", permissions);
+            document.put("title", fname);
+            document.put("url", blobUrl);
+
+            Map<String, Object> customization = new LinkedHashMap<>();
+            customization.put("autosave", false);
+            customization.put("compactToolbar", false);
+            customization.put("forcesave", false);
+            customization.put("showReviewChanges", false);
+            customization.put("zoom", 100);
+
+            Map<String, Object> embedded = new LinkedHashMap<>();
+            embedded.put("saveUrl", blobUrl);
+            embedded.put("shareUrl", shareUrl);
+            embedded.put("toolbarDocked", "top");
+
+            Map<String, Object> editorUser = new LinkedHashMap<>();
+            editorUser.put("id", user);
+            editorUser.put("name", user);
+
+            Map<String, Object> editorConfig = new LinkedHashMap<>();
+            editorConfig.put("callbackUrl", callbackUrl);
+            editorConfig.put("customization", customization);
+            editorConfig.put("embedded", embedded);
+            editorConfig.put("lang", "en-US");
+            editorConfig.put("mode", "edit");
+            editorConfig.put("user", editorUser);
+
+            Map<String, Object> config = new LinkedHashMap<>();
+            config.put("documentType", documentType);
+            config.put("document", document);
+            config.put("editorConfig", editorConfig);
+            config.put("height", "100%");
+            config.put("width", "100%");
+
+            // Sign the config (document + editorConfig, per the ONLYOFFICE spec) and
+            // embed the JWS as the top-level `token` field.
+            if (OnlyOfficeJwt.isEnabled()) {
+                Map<String, Object> payload = new LinkedHashMap<>();
+                payload.put("document", document);
+                payload.put("editorConfig", editorConfig);
+                config.put("token", OnlyOfficeJwt.sign(payload));
+            }
+
+            return Response.ok(MAPPER.writeValueAsString(config)).build();
+        } catch (DocumentNotFoundException | PropertyException pex) {
+            LOG.warn("Error building OnlyOffice config", pex);
+            return Response.status(Status.NOT_FOUND).build();
+        } catch (OnlyOfficeJwtException jwtEx) {
+            LOG.error("Cannot sign OnlyOffice config (check onlyoffice.jwt.* settings)", jwtEx);
+            return Response.status(Status.INTERNAL_SERVER_ERROR).build();
+        } catch (IOException iox) {
+            LOG.error("Error serializing OnlyOffice config", iox);
+            return Response.status(Status.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
     /**
      * Redirect to open an OnlyOffice editor (example: for use in an iFrame)
      *
@@ -347,7 +520,6 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
                 return Response.status(Status.NOT_FOUND).build();
             }
 
-            String user = getContext().getPrincipal().getName();
             String type = getOfficeType(blob.getMimeType());
 
             if (type == null) {
@@ -356,23 +528,18 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
                                .build();
             }
 
-            TokenAuthenticationService tokenSvc = Framework.getService(TokenAuthenticationService.class);
-            String token = tokenSvc.acquireToken(user, APP_NAME, "editor", "Browser", "rw");
-
+            // Redirect (browser-facing) to the editor bootstrap JSP. The JSP fetches
+            // the fully-built, JWT-signed config from `getConfig` below; no token is
+            // minted here anymore (it is minted server-side when the config is built).
             String nuxeoUrl = Framework.getProperty("nuxeo.url", "http://localhost:8080/nuxeo/");
             if (!nuxeoUrl.endsWith("/")) {
                 nuxeoUrl += "/";
             }
 
             UriBuilder redirect = UriBuilder.fromUri(nuxeoUrl + "ui/nuxeo-onlyoffice/onlyoffice-session.jsp")
-                                            .queryParam("token", token)
                                             .queryParam("id", model.getId())
                                             .queryParam("mode", mode)
-                                            .queryParam("user", user)
-                                            .queryParam("xpath", xpath)
-                                            .queryParam("fname", blob.getFilename())
-                                            .queryParam("key", blob.getDigest())
-                                            .queryParam("type", type);
+                                            .queryParam("xpath", xpath);
             URI location = redirect.build();
 
             return Response.temporaryRedirect(location).build();

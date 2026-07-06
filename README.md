@@ -11,21 +11,16 @@ In-browser integration of Nuxeo Platform and [ONLYOFFICE](https://www.onlyoffice
 
 [ONLYOFFICE](https://www.onlyoffice.com/) Document Server (Run a [Docker](https://github.com/ONLYOFFICE/Docker-DocumentServer) image)
 
-### ONLYOFFICE JWT must be disabled
+### ONLYOFFICE JWT is required
 
-This version of the plugin does **not** sign the editor config with JWT and does **not** verify JWT on the save callback. Since ONLYOFFICE Document Server ≥ 7.x has JWT enabled by default, the editor will fail to open documents with the error `errorCode: -20` ("The document security token is not correctly formed") unless JWT is disabled on the server side.
+ONLYOFFICE Document Server ≥ 7.x has JWT enabled by default, and this plugin signs every payload it sends (editor config, conversion request, blob download) and verifies the JWT on the save callback. Run the Document Server with JWT **enabled** and share the same secret with Nuxeo:
 
-When starting the ONLYOFFICE Docker container, explicitly set `JWT_ENABLED=false`:
+- On the Document Server: `JWT_ENABLED=true` and `JWT_SECRET=<your-secret>`.
+- On Nuxeo: `onlyoffice.jwt.secret=<the-same-secret>` (see [Configure](#configure-nuxeoconf)).
 
-```
-docker run -i -t -d -p 80:80 \
-    -e JWT_ENABLED=false \
-    onlyoffice/documentserver
-```
+The secret on both sides **must match**, otherwise the editor fails to open documents (`errorCode: -20`, "The document security token is not correctly formed") and save callbacks are rejected with `401`.
 
-For a non-Docker install, set `services.CoAuthoring.token.enable.browser`, `services.CoAuthoring.token.enable.request.inbox` and `services.CoAuthoring.token.enable.request.outbox` to `false` in the server's `local.json`.
-
-Proper JWT support is on the roadmap.
+JWT is on by default in the plugin (`onlyoffice.jwt.enabled=true`). It can be turned off with `onlyoffice.jwt.enabled=false` for a Document Server started with `JWT_ENABLED=false`, but this is **not recommended** and unsupported for production.
 
 ## Build and Install
 
@@ -60,6 +55,23 @@ onlyoffice.url.api=http://onlyoffice/web-apps/apps/api/documents/api.js
 onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
 # Create version on save (optional, default: false)
 onlyoffice.version.save=true|false
+```
+
+JWT properties (see [ONLYOFFICE JWT is required](#onlyoffice-jwt-is-required)):
+
+```
+# Enable JWT signing/verification (optional, default: true)
+onlyoffice.jwt.enabled=true
+# Shared secret — MUST match the Document Server JWT_SECRET (required when enabled)
+onlyoffice.jwt.secret=<your-shared-secret>
+# Signing algorithm: HS256 (default), HS384 or HS512. Must match the Document Server.
+onlyoffice.jwt.algorithm=HS256
+# HTTP header carrying the token (optional, default: Authorization)
+onlyoffice.jwt.header=Authorization
+# Token prefix (optional, default: "Bearer ")
+onlyoffice.jwt.prefix=Bearer
+# Token time-to-live in seconds (optional, default: 300)
+onlyoffice.jwt.ttl=300
 ```
 
 Conversion properties (Optional):
@@ -111,6 +123,73 @@ onlyoffice.url.api=https://onlyoffice.example.com/web-apps/apps/api/documents/ap
 onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
 onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
 ```
+
+### Deploying with nuxeo-presales-docker
+
+If you use the [nuxeo-presales-docker](https://github.com/nuxeo-sandbox/nuxeo-presales-docker) tooling, add an `onlyoffice` service to your `docker-compose` file alongside the existing `nuxeo` / `mongo` / `opensearch` / `dashboards` services:
+
+```yaml
+services:
+  nuxeo:
+    # . . .
+  mongo:
+    # . . .
+  opensearch:
+    # . . .
+  dashboards:
+    # . . .
+  onlyoffice:
+    image: onlyoffice/documentserver:latest
+    hostname: onlyoffice
+    restart: unless-stopped
+    environment:
+      - "JWT_ENABLED=true"
+      - "JWT_SECRET=${JWT_SECRET}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/healthcheck"]
+      interval: 1m
+      timeout: 30s
+      retries: 10
+      start_period: 2m
+    expose:
+      - 80
+    ports:
+      - "8888:80"
+    volumes:
+      - ./data/onlyoffice-test-onlyoffice:/var/www/onlyoffice/Data
+      - ./logs/onlyoffice:/var/log/onlyoffice
+      # Post-start patch that adds request-filtering-agent.allowPrivateIPAddress
+      # to /etc/onlyoffice/documentserver/local.json. Mounted so it can be run
+      # via docker compose exec once the OnlyOffice entrypoint has completed
+      # its own initialization of local.json (JWT secret generation, etc.).
+      - ./conf/onlyoffice-local.json:/tmp/onlyoffice-ssrf-patch.json:ro
+```
+
+Store the shared secret in your `.env` file so both the Document Server (`JWT_SECRET`) and Nuxeo (`onlyoffice.jwt.secret`) use the **same** value:
+
+```
+# .env
+JWT_SECRET=change-me-to-a-strong-random-secret
+```
+
+Then, in your mounted Nuxeo `conf.d/` fragment (e.g. `./conf/onlyoffice.conf`), point the plugin at this stack and reuse the same secret:
+
+```
+# Browser-facing (public) — YOUR_NUXEO_SERVER is your published Nuxeo host
+nuxeo.url=https://YOUR_NUXEO_SERVER/nuxeo
+onlyoffice.url.api=http://localhost:8888/web-apps/apps/api/documents/api.js
+
+# Container-facing (internal Docker network) — the OnlyOffice container reaches
+# Nuxeo through the compose service name (here: `nuxeo`) on its internal port
+onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
+onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
+
+# JWT — must match JWT_SECRET from the .env file above
+onlyoffice.jwt.enabled=true
+onlyoffice.jwt.secret=change-me-to-a-strong-random-secret
+```
+
+> The `onlyoffice.jwt.secret` value must be identical to the `JWT_SECRET` passed to the `onlyoffice` container. A mismatch causes `errorCode: -20` on open and `401` on save.
 
 ## (Optional) Use Conversion Service
 

@@ -41,6 +41,13 @@ public class OnlyOfficeCallback {
     @JsonProperty("filetype")
     private String fileType = null;
 
+    // The ONLYOFFICE JWT (present when JWT is enabled on the Document Server). For
+    // POST callbacks (7.1+) the token is sent in the body and its payload is the
+    // whole callback. Verified in OnlyOfficeResource.postCallback; not part of
+    // equals/hashCode/toString (it is an auth envelope, not callback data).
+    @JsonProperty("token")
+    private String token = null;
+
     public OnlyOfficeCallback() {
         super();
     }
@@ -79,6 +86,10 @@ public class OnlyOfficeCallback {
 
     public String getFileType() {
         return fileType;
+    }
+
+    public String getToken() {
+        return token;
     }
 
     @Override

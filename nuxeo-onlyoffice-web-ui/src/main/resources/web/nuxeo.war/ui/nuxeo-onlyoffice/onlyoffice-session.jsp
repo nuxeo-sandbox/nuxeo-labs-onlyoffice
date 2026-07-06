@@ -69,39 +69,23 @@ limitations under the License.
 
   <%
     /*
-     * Two distinct Nuxeo base URLs are needed because ONLYOFFICE runs in a
-     * separate container in most deployments (Docker gotcha):
+     * The editor config is built and JWT-signed server-side (see the
+     * `getConfig` REST endpoint) — the shared JWT secret must never reach the
+     * browser. Here we only need the PUBLIC (browser-facing) Nuxeo base URL to
+     * fetch that config; the config itself carries the INTERNAL
+     * (container-facing) blob-download + callback URLs computed server-side.
      *
-     *   - PUBLIC base: consumed by the browser. Used for the "Open in Nuxeo"
-     *     link (`share`). Comes from `nuxeo.url`; falls back to the browser's
-     *     `location.origin` + servlet context path when unset.
-     *
-     *   - INTERNAL base: consumed by the ONLYOFFICE Document Server. Used for
-     *     the blob download (`document.url`) and the save callback
-     *     (`callbackUrl`) — ONLYOFFICE fetches/POSTs these from inside its
-     *     container, so the URL must be reachable container-to-container (e.g.
-     *     `http://nuxeo:8080/nuxeo`). Comes from `onlyoffice.url.nuxeo`; falls
-     *     back to `nuxeo.url`, then to `location.origin` + context path.
-     *
-     * On a single-machine (non-Docker) setup, leave `onlyoffice.url.nuxeo`
-     * unset and both bases collapse to the same value.
+     * `nuxeo.url` is the public base; when unset we fall back to the browser's
+     * `location.origin` + servlet context path.
      */
     String api = Framework.getProperty("onlyoffice.url.api");
     String publicBase = stripTrailingSlash(Framework.getProperty("nuxeo.url"));
-    String internalBase = stripTrailingSlash(Framework.getProperty("onlyoffice.url.nuxeo"));
-    if (internalBase == null) {
-      internalBase = publicBase;
-    }
     String contextPath = request.getContextPath();
   %>
   <script type="text/javascript" src="<%= api %>"></script>
   <script type="text/javascript">
-    // Public base — browser-facing (the "Open in Nuxeo" link). Prefer
-    // `nuxeo.url`; otherwise reconstruct from `location.origin` + context path.
+    // Public (browser-facing) Nuxeo base — used only to fetch the signed config.
     var nuxeoPublicBase = <%= (publicBase != null) ? "\"" + publicBase + "\"" : "location.origin + \"" + contextPath + "\"" %>;
-    // Internal base — ONLYOFFICE-facing (blob download + save callback). Prefer
-    // `onlyoffice.url.nuxeo`, then `nuxeo.url`, then `location.origin` + path.
-    var nuxeoInternalBase = <%= (internalBase != null) ? "\"" + internalBase + "\"" : "location.origin + \"" + contextPath + "\"" %>;
     var docEditor;
 
     var innerAlert = function (message) {
@@ -141,93 +125,46 @@ limitations under the License.
       var urlParams = new URLSearchParams(window.location.search);
 
       var uid = urlParams.get("id");
-      var token = urlParams.get("token");
-      var key = urlParams.get("key");
       var xpath = urlParams.get("xpath") || 'file:content';
-      var fname = urlParams.get("fname") || 'document.docx';
-      var docType = urlParams.get("type") || 'text';
       var mode = urlParams.get("mode") || 'desktop';
-      var userId = urlParams.get("user");
 
-      var fileType = fname.substring(fname.lastIndexOf(".") + 1).toLowerCase();
-      var writable = false;
-
-      if (mode !== 'embedded') {
-        writable = true;
-        if (mobileDevice()) {
-          mode = 'mobile';
-        }
-      }
-
-      if (!(uid && token)) {
+      if (!uid) {
         return;
       }
 
-      console.log("uid:" + uid + ", mode:" + mode + ", key:" + key + ", xpath: " + xpath +
-        ", name:" + fname + " (" + fileType + "), type:" + docType);
-
-      // `share` is browser-facing → public base. `blob` + `callback` are fetched
-      // by the ONLYOFFICE container → internal base (see the scriptlet comment).
-      var share = nuxeoPublicBase + '/ui/#!/doc/' + uid;
-      var blob = nuxeoInternalBase + '/nxfile/default/' + uid +
-        '/' + xpath + '/' + fname + '?inline=true&token=' + token;
-      var callback = nuxeoInternalBase + '/api/v1/onlyoffice/callback/' +
-        uid + '/' + xpath + '?token=' + token;
-
-      var config = {
-        "documentType": docType,
-        "editorConfig": {
-          "callbackUrl": callback,
-          "customization": {
-            "autosave": false,
-            "compactToolbar": false,
-            "forcesave": false,
-            "showReviewChanges": false,
-            "zoom": 100
-          },
-          "embedded": {
-            "saveUrl": blob,
-            "shareUrl": share,
-            "toolbarDocked": "top"
-          },
-          "lang": "en-US",
-          "mode": "edit"
-        },
-        "height": "100%",
-        "type": mode,
-        "width": "100%",
-        "events": {
-          "onDocumentStateChange": onDocumentStateChange,
-          "onOutdatedVersion": onOutdatedVersion,
-          "onError": onError,
-        }
-      };
-
-      if (key) {
-        config.document = {
-          "fileType": fileType,
-          "key": key,
-          "permissions": {
-            "chat": writable,
-            "comment": writable,
-            "edit": writable,
-            "review": writable,
-            "print": true,
-            "download": true
-          },
-          "title": fname,
-          "url": blob
-        }
+      // The `type` (desktop/mobile/embedded) is client-side: mobile detection can
+      // only upgrade desktop -> mobile (visual) and does not affect permissions.
+      var type = mode;
+      if (mode !== 'embedded' && mobileDevice()) {
+        type = 'mobile';
       }
 
-      if (userId) {
-        config.editorConfig.user = {
-          "id": userId,
-          "name": userId
-        };
-      }
+      // Fetch the fully-built, JWT-signed config from the server. Assembly must
+      // happen server-side so the shared JWT secret never reaches the browser;
+      // the server also computes the public/internal (Docker split) URLs and mints
+      // the Nuxeo download token embedded in document.url / callbackUrl.
+      var configUrl = nuxeoPublicBase + '/api/v1/onlyoffice/config/' + uid + '/' + xpath + '?mode=' + mode;
 
-      docEditor = new DocsAPI.DocEditor("iframeEditor", config);
+      fetch(configUrl, { credentials: 'include', headers: { 'Accept': 'application/json' } })
+        .then(function (resp) {
+          if (!resp.ok) {
+            throw new Error('Failed to load ONLYOFFICE config: ' + resp.status);
+          }
+          return resp.json();
+        })
+        .then(function (config) {
+          // Attach client-only fields (cannot be signed / serialized server-side).
+          config.type = type;
+          config.events = {
+            "onDocumentStateChange": onDocumentStateChange,
+            "onOutdatedVersion": onOutdatedVersion,
+            "onError": onError
+          };
+          docEditor = new DocsAPI.DocEditor("iframeEditor", config);
+        })
+        .catch(function (err) {
+          innerAlert(err.message || err);
+        });
     };
 
     if (window.addEventListener) {

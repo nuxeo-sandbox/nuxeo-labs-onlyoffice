@@ -4,6 +4,9 @@
 
 In-browser integration of Nuxeo Platform and [ONLYOFFICE](https://www.onlyoffice.com/).
 
+> [!IMPORTANT]
+> Master branch is **Work in Progress** for upgrade to LTS2025. Do not use it as is.
+
 ## Dependencies
 
 [ONLYOFFICE](https://www.onlyoffice.com/) Document Server (Run a [Docker](https://github.com/ONLYOFFICE/Docker-DocumentServer) image)

@@ -17,6 +17,20 @@ limitations under the License.
 
 <%@page import="org.nuxeo.runtime.api.Framework"%>
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
+<%!
+    // Trims a config URL and removes a single trailing slash. Returns null when
+    // the property is unset, so callers can apply their own fallback.
+    private static String stripTrailingSlash(String url) {
+        if (url == null) {
+            return null;
+        }
+        url = url.trim();
+        if (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
+        return url;
+    }
+%>
 
 <!DOCTYPE html>
 <html>
@@ -54,27 +68,40 @@ limitations under the License.
 </style>
 
   <%
-    // Prefer `nuxeo.url` (fully qualified, e.g. `https://host/nuxeo`) so callback
-    // and blob-download URLs sent to ONLYOFFICE Document Server match what the
-    // integrator configured. Fall back to the servlet context path prefixed by
-    // the browser's `location.origin` at runtime. Either way, both values must
-    // be reachable from the Document Server container (Docker gotcha).
+    /*
+     * Two distinct Nuxeo base URLs are needed because ONLYOFFICE runs in a
+     * separate container in most deployments (Docker gotcha):
+     *
+     *   - PUBLIC base: consumed by the browser. Used for the "Open in Nuxeo"
+     *     link (`share`). Comes from `nuxeo.url`; falls back to the browser's
+     *     `location.origin` + servlet context path when unset.
+     *
+     *   - INTERNAL base: consumed by the ONLYOFFICE Document Server. Used for
+     *     the blob download (`document.url`) and the save callback
+     *     (`callbackUrl`) — ONLYOFFICE fetches/POSTs these from inside its
+     *     container, so the URL must be reachable container-to-container (e.g.
+     *     `http://nuxeo:8080/nuxeo`). Comes from `onlyoffice.url.nuxeo`; falls
+     *     back to `nuxeo.url`, then to `location.origin` + context path.
+     *
+     * On a single-machine (non-Docker) setup, leave `onlyoffice.url.nuxeo`
+     * unset and both bases collapse to the same value.
+     */
     String api = Framework.getProperty("onlyoffice.url.api");
-    String nuxeoBase = Framework.getProperty("nuxeo.url");
-    if (nuxeoBase != null) {
-      nuxeoBase = nuxeoBase.trim();
-      if (nuxeoBase.endsWith("/")) {
-        nuxeoBase = nuxeoBase.substring(0, nuxeoBase.length() - 1);
-      }
+    String publicBase = stripTrailingSlash(Framework.getProperty("nuxeo.url"));
+    String internalBase = stripTrailingSlash(Framework.getProperty("onlyoffice.url.nuxeo"));
+    if (internalBase == null) {
+      internalBase = publicBase;
     }
     String contextPath = request.getContextPath();
   %>
   <script type="text/javascript" src="<%= api %>"></script>
   <script type="text/javascript">
-    // Base URL for building callback and blob-download URLs. Prefer the
-    // server-configured `nuxeo.url`; otherwise reconstruct from `location.origin`
-    // + the servlet context path.
-    var nuxeoBase = <%= (nuxeoBase != null) ? "\"" + nuxeoBase + "\"" : "location.origin + \"" + contextPath + "\"" %>;
+    // Public base — browser-facing (the "Open in Nuxeo" link). Prefer
+    // `nuxeo.url`; otherwise reconstruct from `location.origin` + context path.
+    var nuxeoPublicBase = <%= (publicBase != null) ? "\"" + publicBase + "\"" : "location.origin + \"" + contextPath + "\"" %>;
+    // Internal base — ONLYOFFICE-facing (blob download + save callback). Prefer
+    // `onlyoffice.url.nuxeo`, then `nuxeo.url`, then `location.origin` + path.
+    var nuxeoInternalBase = <%= (internalBase != null) ? "\"" + internalBase + "\"" : "location.origin + \"" + contextPath + "\"" %>;
     var docEditor;
 
     var innerAlert = function (message) {
@@ -139,10 +166,12 @@ limitations under the License.
       console.log("uid:" + uid + ", mode:" + mode + ", key:" + key + ", xpath: " + xpath +
         ", name:" + fname + " (" + fileType + "), type:" + docType);
 
-      var share = nuxeoBase + '/ui/#!/doc/' + uid;
-      var blob = nuxeoBase + '/nxfile/default/' + uid +
+      // `share` is browser-facing → public base. `blob` + `callback` are fetched
+      // by the ONLYOFFICE container → internal base (see the scriptlet comment).
+      var share = nuxeoPublicBase + '/ui/#!/doc/' + uid;
+      var blob = nuxeoInternalBase + '/nxfile/default/' + uid +
         '/' + xpath + '/' + fname + '?inline=true&token=' + token;
-      var callback = nuxeoBase + '/api/v1/onlyoffice/callback/' +
+      var callback = nuxeoInternalBase + '/api/v1/onlyoffice/callback/' +
         uid + '/' + xpath + '?token=' + token;
 
       var config = {

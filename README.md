@@ -40,13 +40,24 @@ mvn clean install
 
 ## Configure (nuxeo.conf)
 
-The `nuxeo.url` property must be the fully qualified URL for your nuxeo instance, such as `https://my.nuxeo.org/nuxeo`
+All properties below go into your Nuxeo configuration (`nuxeo.conf`, or a
+`nuxeo.conf` fragment — see [Docker deployment](#docker-deployment-browser-vs-container-urls)).
+You do **not** need to activate any template — the plugin reads these properties
+directly at runtime.
+
+`nuxeo.url` is a **platform-wide** Nuxeo property (fully qualified instance URL,
+such as `https://my.nuxeo.org/nuxeo`) shared by many Nuxeo features (mail, share
+links, ...). It is usually already set on your instance; this plugin only reads
+it. Make sure it is correct — this plugin depends on it.
 
 Editor properties:
 
 ```
 # URL to editor api.js service (required)
 onlyoffice.url.api=http://onlyoffice/web-apps/apps/api/documents/api.js
+# Internal Nuxeo URL used by ONLYOFFICE to download blobs and POST save
+# callbacks (optional, default: falls back to nuxeo.url). See "Docker" below.
+onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
 # Create version on save (optional, default: false)
 onlyoffice.version.save=true|false
 ```
@@ -60,7 +71,46 @@ onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
 onlyoffice.conversion.wait=1000
 ```
 
-> (!) When using Docker, use an accessible hostname for the IP URLs.
+### Docker deployment (browser vs container URLs)
+
+The usual way to configure the plugin in Docker is to drop a `nuxeo.conf`
+fragment into the mounted `conf.d/` directory — no template activation needed.
+For example, keep a local `conf/` folder holding an `onlyoffice.conf` and mount
+it in your Compose file:
+
+```yaml
+volumes:
+  - ./conf:/etc/nuxeo/conf.d/:ro
+```
+
+Then put the properties below into `./conf/onlyoffice.conf`.
+
+When Nuxeo and ONLYOFFICE run in separate containers, a single URL cannot serve
+everyone: the browser and the ONLYOFFICE container reach Nuxeo through different
+hostnames. The plugin uses **two** Nuxeo base URLs to handle this.
+
+| Property | Consumed by | Must be reachable from | Purpose |
+|---|---|---|---|
+| `nuxeo.url` | Browser | End user's browser | "Open in Nuxeo" link |
+| `onlyoffice.url.nuxeo` | ONLYOFFICE container | Document Server container | Blob download + save callback |
+| `onlyoffice.url.api` | Browser | End user's browser | Loads the editor (`api.js`) |
+| `onlyoffice.url.conversion` | Nuxeo (server) | Nuxeo container | `office2pdf` conversion calls |
+
+`onlyoffice.url.nuxeo` falls back to `nuxeo.url` when unset, so on a
+single-machine (non-Docker) setup you only need `nuxeo.url`.
+
+Example for a Docker Compose setup where the ONLYOFFICE service is named
+`onlyoffice` and the Nuxeo service is named `nuxeo`, fronted by a public host:
+
+```
+# Browser-facing (public)
+nuxeo.url=https://nuxeo.example.com/nuxeo
+onlyoffice.url.api=https://onlyoffice.example.com/web-apps/apps/api/documents/api.js
+
+# Container-facing (internal Docker network)
+onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
+onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
+```
 
 ## (Optional) Use Conversion Service
 

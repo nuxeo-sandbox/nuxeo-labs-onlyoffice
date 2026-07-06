@@ -191,6 +191,45 @@ onlyoffice.jwt.secret=change-me-to-a-strong-random-secret
 
 > The `onlyoffice.jwt.secret` value must be identical to the `JWT_SECRET` passed to the `onlyoffice` container. A mismatch causes `errorCode: -20` on open and `401` on save.
 
+> The `onlyoffice.url.api=http://localhost:8888/...` above only works when the **browser runs on the same machine** as the containers (pure local dev). For any remote / published deployment, see the next section — the browser must reach the Document Server over public HTTPS.
+
+### Public / HTTPS deployment (e.g. AWS): OnlyOffice needs its own hostname
+
+The editor is loaded **by the end user's browser** (`api.js`, then a WebSocket to the Document Server). So on a published server the DS must be reachable over **public HTTPS**, not just on the internal Docker network. Since Nuxeo is served over HTTPS, an `http://` `api.js` is also blocked as mixed content.
+
+OnlyOffice does **not** support running under a sub-path (e.g. `/onlyoffice/`), so give it a **dedicated subdomain** fronted by your TLS-terminating reverse proxy. Example (validated with the [nuxeo-presales-docker](https://github.com/nuxeo-sandbox/nuxeo-presales-docker) tooling on AWS, which uses Apache + Certbot):
+
+1. **DNS**: add a record for the OnlyOffice subdomain (e.g. `my-instance-onlyoffice.example.com`) pointing at the same host (a `CNAME` to the Nuxeo FQDN, or an `A` record to the same IP).
+2. **Reverse proxy**: add a vhost that terminates TLS and proxies the subdomain to the DS container's published port (`8888` in the compose above), **including WebSocket**. With Apache:
+
+   ```apache
+   <VirtualHost _default_:443>
+       ServerName my-instance-onlyoffice.example.com
+       AllowEncodedSlashes NoDecode
+       ProxyPreserveHost On
+       ProxyAddHeaders Off
+       RequestHeader set X-Forwarded-Proto "https"
+
+       # WebSocket (co-editing) + HTTP on the same location
+       RewriteEngine On
+       RewriteCond %{HTTP:Upgrade} =websocket [NC]
+       RewriteRule /(.*) ws://127.0.0.1:8888/$1 [P,L]
+       RewriteCond %{HTTP:Upgrade} !=websocket [NC]
+       RewriteRule /(.*) http://127.0.0.1:8888/$1 [P,L]
+
+       ProxyPass        / http://127.0.0.1:8888/
+       ProxyPassReverse / http://127.0.0.1:8888/
+   </VirtualHost>
+   ```
+   (Enable `mod_proxy_wstunnel`; let Certbot add the `SSLCertificate*` lines.)
+3. **`onlyoffice.url.api`**: point it at the subdomain (browser-facing, HTTPS):
+
+   ```
+   onlyoffice.url.api=https://my-instance-onlyoffice.example.com/web-apps/apps/api/documents/api.js
+   ```
+
+The **DS → Nuxeo** direction (blob download + save callback) is separate. Prefer the internal Docker network (`onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo`) rather than the public URL — a container reaching its host's own public IP often fails (NAT hairpinning). Because that internal URL is a private IP, the Document Server's SSRF filter blocks it by default, so enable `request-filtering-agent.allowPrivateIPAddress` in the DS `local.json` (the `onlyoffice-local.json` patch mounted in the compose above).
+
 ## (Optional) Use Conversion Service
 
 Invoke the conversion service to transform between a variety of content types.  By default, the [office2pdf contribution](/nuxeo-onlyoffice-core/src/main/resources/OSGI-INF/onlyoffice-conversion-contrib.xml) will support PDF as a destination type.  See the [ONLYOFFICE Conversion API](https://api.onlyoffice.com/editors/conversionapi) for a full conversion matrix.

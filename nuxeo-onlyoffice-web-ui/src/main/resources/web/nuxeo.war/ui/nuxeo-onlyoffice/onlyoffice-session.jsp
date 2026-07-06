@@ -53,9 +53,28 @@ limitations under the License.
     }
 </style>
 
-  <% String api = Framework.getProperty("onlyoffice.url.api"); %>
+  <%
+    // Prefer `nuxeo.url` (fully qualified, e.g. `https://host/nuxeo`) so callback
+    // and blob-download URLs sent to ONLYOFFICE Document Server match what the
+    // integrator configured. Fall back to the servlet context path prefixed by
+    // the browser's `location.origin` at runtime. Either way, both values must
+    // be reachable from the Document Server container (Docker gotcha).
+    String api = Framework.getProperty("onlyoffice.url.api");
+    String nuxeoBase = Framework.getProperty("nuxeo.url");
+    if (nuxeoBase != null) {
+      nuxeoBase = nuxeoBase.trim();
+      if (nuxeoBase.endsWith("/")) {
+        nuxeoBase = nuxeoBase.substring(0, nuxeoBase.length() - 1);
+      }
+    }
+    String contextPath = request.getContextPath();
+  %>
   <script type="text/javascript" src="<%= api %>"></script>
   <script type="text/javascript">
+    // Base URL for building callback and blob-download URLs. Prefer the
+    // server-configured `nuxeo.url`; otherwise reconstruct from `location.origin`
+    // + the servlet context path.
+    var nuxeoBase = <%= (nuxeoBase != null) ? "\"" + nuxeoBase + "\"" : "location.origin + \"" + contextPath + "\"" %>;
     var docEditor;
 
     var innerAlert = function (message) {
@@ -120,10 +139,10 @@ limitations under the License.
       console.log("uid:" + uid + ", mode:" + mode + ", key:" + key + ", xpath: " + xpath +
         ", name:" + fname + " (" + fileType + "), type:" + docType);
 
-      var share = location.origin + '/nuxeo/ui/#!/doc/' + uid;
-      var blob = location.origin + '/nuxeo/nxfile/default/' + uid +
+      var share = nuxeoBase + '/ui/#!/doc/' + uid;
+      var blob = nuxeoBase + '/nxfile/default/' + uid +
         '/' + xpath + '/' + fname + '?inline=true&token=' + token;
-      var callback = location.origin + '/nuxeo/api/v1/onlyoffice/callback/' +
+      var callback = nuxeoBase + '/api/v1/onlyoffice/callback/' +
         uid + '/' + xpath + '?token=' + token;
 
       var config = {
@@ -132,8 +151,6 @@ limitations under the License.
           "callbackUrl": callback,
           "customization": {
             "autosave": false,
-            "chat": true,
-            "commentAuthorOnly": false,
             "compactToolbar": false,
             "forcesave": false,
             "showReviewChanges": false,
@@ -162,6 +179,7 @@ limitations under the License.
           "fileType": fileType,
           "key": key,
           "permissions": {
+            "chat": writable,
             "comment": writable,
             "edit": writable,
             "review": writable,

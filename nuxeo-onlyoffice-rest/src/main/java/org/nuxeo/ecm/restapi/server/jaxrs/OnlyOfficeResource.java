@@ -39,6 +39,8 @@ import org.nuxeo.ecm.core.api.VersioningOption;
 import org.nuxeo.ecm.core.api.blobholder.BlobHolder;
 import org.nuxeo.ecm.core.api.versioning.VersioningService;
 import org.nuxeo.ecm.core.schema.FacetNames;
+import org.nuxeo.ecm.platform.mimetype.MimetypeNotFoundException;
+import org.nuxeo.ecm.platform.mimetype.interfaces.MimetypeRegistry;
 import org.nuxeo.ecm.tokenauth.service.TokenAuthenticationService;
 import org.nuxeo.ecm.webengine.model.WebObject;
 import org.nuxeo.ecm.webengine.model.impl.DefaultObject;
@@ -167,12 +169,31 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
                     model.addFacet("onlyoffice");
                 }
 
-                if (callback.isModified() && callback.getUrl() != null) {
+                if (callback.getUrl() != null) {
                     Blob original = (Blob) model.getPropertyValue(xpath);
                     if (original == null) {
                         BlobHolder bh = model.getAdapter(BlobHolder.class);
                         if (bh != null) {
                             original = bh.getBlob();
+                        }
+                    }
+
+                    // Determine the final filename + mime for the incoming blob.
+                    // OnlyOffice may return a different extension than the source
+                    // (typical case: `.doc` opened, saved back as `.docx` because
+                    // `assemblyFormatAsOrigin` failed for a legacy format). The
+                    // `filetype` callback field, when present, is authoritative.
+                    String targetFilename = original.getFilename();
+                    String targetMime = original.getMimeType();
+                    String callbackExt = callback.getFileType();
+                    if (StringUtils.isNotBlank(callbackExt)) {
+                        callbackExt = callbackExt.toLowerCase();
+                        String currentExt = extensionOf(targetFilename);
+                        if (!callbackExt.equals(currentExt)) {
+                            targetFilename = replaceExtension(targetFilename, callbackExt);
+                            targetMime = resolveMime(callbackExt, targetMime);
+                            LOG.info("OnlyOffice returned a different filetype for {}: {} -> {} (mime: {})",
+                                    original.getFilename(), currentExt, callbackExt, targetMime);
                         }
                     }
 
@@ -182,8 +203,8 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
                     try (CloseableHttpClient httpClient = HttpClientBuilder.create().build();
                             CloseableHttpResponse response = httpClient.execute(get);
                             InputStream stream = response.getEntity().getContent()) {
-                        saved = Blobs.createBlob(stream, original.getMimeType(), original.getEncoding());
-                        saved.setFilename(original.getFilename());
+                        saved = Blobs.createBlob(stream, targetMime, original.getEncoding());
+                        saved.setFilename(targetFilename);
                     }
 
                     DocumentHelper.addBlob(model.getProperty(xpath), saved);
@@ -224,6 +245,52 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
         VersioningOption vo = major ? VersioningOption.MAJOR : VersioningOption.MINOR;
         doc.putContextData(VersioningService.VERSIONING_OPTION, vo);
         return doc;
+    }
+
+    /**
+     * Returns the lowercase extension of the given filename (without the dot), or {@code null} if the filename has no
+     * extension.
+     */
+    private static String extensionOf(String filename) {
+        if (filename == null) {
+            return null;
+        }
+        int dot = filename.lastIndexOf('.');
+        if (dot < 0 || dot == filename.length() - 1) {
+            return null;
+        }
+        return filename.substring(dot + 1).toLowerCase();
+    }
+
+    /**
+     * Replaces the extension of {@code filename} with {@code newExtension} (which must not contain a leading dot).
+     * If {@code filename} has no extension, {@code newExtension} is appended.
+     */
+    private static String replaceExtension(String filename, String newExtension) {
+        if (filename == null || filename.isBlank()) {
+            return "document." + newExtension;
+        }
+        int dot = filename.lastIndexOf('.');
+        String base = (dot < 0) ? filename : filename.substring(0, dot);
+        return base + "." + newExtension;
+    }
+
+    /**
+     * Resolves a mime-type for the given extension via {@link MimetypeRegistry}. Falls back to {@code fallback} (the
+     * source blob's mime-type) if the extension is unknown or the registry is unavailable.
+     */
+    private static String resolveMime(String extension, String fallback) {
+        try {
+            MimetypeRegistry registry = Framework.getService(MimetypeRegistry.class);
+            if (registry != null) {
+                return registry.getMimetypeFromExtension(extension);
+            }
+        } catch (MimetypeNotFoundException mnfe) {
+            LOG.warn("No mime-type registered for extension '.{}', falling back to '{}'", extension, fallback);
+        } catch (Exception ex) {
+            LOG.warn("Error resolving mime-type for extension '.{}', falling back to '{}'", extension, fallback, ex);
+        }
+        return fallback;
     }
 
     private String getOfficeType(String mime) {

@@ -59,11 +59,19 @@ limitations under the License.
           type: Array,
           readOnly: true,
           value: [
+            // Microsoft Word
             "application/msword",
             "application/vnd.ms-word.document.macroenabled.12",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "application/vnd.ms-word.template.macroenabled.12",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.template"
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.template",
+            // OpenDocument text
+            "application/vnd.oasis.opendocument.text",
+            "application/vnd.oasis.opendocument.text-template",
+            // Rich text / plain text (opened as `word`)
+            "application/rtf",
+            "text/rtf",
+            "text/plain"
           ]
         },
 
@@ -71,11 +79,17 @@ limitations under the License.
           type: Array,
           readOnly: true,
           value: [
+            // Microsoft Excel
             "application/vnd.ms-excel",
             "application/vnd.ms-excel.sheet.macroenabled.12",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             "application/vnd.ms-excel.template.macroenabled.12",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.template"
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.template",
+            // OpenDocument spreadsheet
+            "application/vnd.oasis.opendocument.spreadsheet",
+            "application/vnd.oasis.opendocument.spreadsheet-template",
+            // CSV
+            "text/csv"
           ]
         },
 
@@ -83,6 +97,7 @@ limitations under the License.
           type: Array,
           readOnly: true,
           value: [
+            // Microsoft PowerPoint
             "application/vnd.ms-powerpoint",
             "application/vnd.ms-powerpoint.presentation.macroenabled.12",
             "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -90,7 +105,10 @@ limitations under the License.
             "application/vnd.openxmlformats-officedocument.presentationml.slideshow",
             "application/vnd.ms-powerpoint.template.macroenabled.12",
             "application/vnd.openxmlformats-officedocument.presentationml.template",
-            "application/vnd.openxmlformats-officedocument.presentationml.slide"
+            "application/vnd.openxmlformats-officedocument.presentationml.slide",
+            // OpenDocument presentation
+            "application/vnd.oasis.opendocument.presentation",
+            "application/vnd.oasis.opendocument.presentation-template"
           ]
         }
       },

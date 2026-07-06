@@ -33,8 +33,13 @@ public class OnlyOfficeCallback {
     @JsonProperty("lastsave")
     private Date lastSave = null;
 
-    @JsonProperty("notmodified")
-    private boolean notModified = true;
+    // The `filetype` field (added to the OnlyOffice callback in v7.0) is the actual
+    // extension of the document downloadable from `url`. When `assemblyFormatAsOrigin`
+    // (server-side, default true since v7.0) fails to preserve the original format
+    // (typical for legacy `.doc`), this field reports the fallback extension (usually
+    // `.docx`). See B2 handling in OnlyOfficeResource.postCallback.
+    @JsonProperty("filetype")
+    private String fileType = null;
 
     public OnlyOfficeCallback() {
         super();
@@ -72,12 +77,8 @@ public class OnlyOfficeCallback {
         return lastSave;
     }
 
-    public boolean isModified() {
-        return notModified == false;
-    }
-
-    public boolean isNotModified() {
-        return notModified;
+    public String getFileType() {
+        return fileType;
     }
 
     @Override
@@ -88,7 +89,7 @@ public class OnlyOfficeCallback {
         result = prime * result + forceSaveType;
         result = prime * result + ((key == null) ? 0 : key.hashCode());
         result = prime * result + ((lastSave == null) ? 0 : lastSave.hashCode());
-        result = prime * result + (notModified ? 1231 : 1237);
+        result = prime * result + ((fileType == null) ? 0 : fileType.hashCode());
         result = prime * result + status;
         result = prime * result + ((url == null) ? 0 : url.hashCode());
         result = prime * result + ((userData == null) ? 0 : userData.hashCode());
@@ -122,7 +123,10 @@ public class OnlyOfficeCallback {
                 return false;
         } else if (!lastSave.equals(other.lastSave))
             return false;
-        if (notModified != other.notModified)
+        if (fileType == null) {
+            if (other.fileType != null)
+                return false;
+        } else if (!fileType.equals(other.fileType))
             return false;
         if (status != other.status)
             return false;
@@ -147,8 +151,8 @@ public class OnlyOfficeCallback {
     @Override
     public String toString() {
         return String.format(
-                "OnlyOfficeCallback [changesUrl=%s, forceSaveType=%s, key=%s, status=%s, url=%s, userData=%s, users=%s, lastSave=%s, notModified=%s]",
-                changesUrl, forceSaveType, key, status, url, userData, users, lastSave, notModified);
+                "OnlyOfficeCallback [changesUrl=%s, forceSaveType=%s, key=%s, status=%s, url=%s, userData=%s, users=%s, lastSave=%s, fileType=%s]",
+                changesUrl, forceSaveType, key, status, url, userData, users, lastSave, fileType);
     }
 
 }

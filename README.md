@@ -8,6 +8,22 @@ In-browser integration of Nuxeo Platform and [ONLYOFFICE](https://www.onlyoffice
 
 [ONLYOFFICE](https://www.onlyoffice.com/) Document Server (Run a [Docker](https://github.com/ONLYOFFICE/Docker-DocumentServer) image)
 
+### ONLYOFFICE JWT must be disabled
+
+This version of the plugin does **not** sign the editor config with JWT and does **not** verify JWT on the save callback. Since ONLYOFFICE Document Server ≥ 7.x has JWT enabled by default, the editor will fail to open documents with the error `errorCode: -20` ("The document security token is not correctly formed") unless JWT is disabled on the server side.
+
+When starting the ONLYOFFICE Docker container, explicitly set `JWT_ENABLED=false`:
+
+```
+docker run -i -t -d -p 80:80 \
+    -e JWT_ENABLED=false \
+    onlyoffice/documentserver
+```
+
+For a non-Docker install, set `services.CoAuthoring.token.enable.browser`, `services.CoAuthoring.token.enable.request.inbox` and `services.CoAuthoring.token.enable.request.outbox` to `false` in the server's `local.json`.
+
+Proper JWT support is on the roadmap.
+
 ## Build and Install
 
 Build with maven (at least 3.3)

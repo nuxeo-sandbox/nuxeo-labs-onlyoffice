@@ -1,22 +1,25 @@
 <?xml version="1.0"?>
 <fragment version="1">
-  <require>org.nuxeo.web.ui</require>
-  <install>
-    <!-- unzip the war template -->
-    <unzip from="${bundle.fileName}" to="/" prefix="web">
-      <include>web/nuxeo.war/**</include>
-      <exclude>web/nuxeo.war/ui/i18n/**</exclude>
-    </unzip>
 
-    <!-- create a temporary folder -->
-    <delete path="${bundle.fileName}.tmp"/>
-    <mkdir path="${bundle.fileName}.tmp"/>
-    <unzip from="${bundle.fileName}" to="${bundle.fileName}.tmp"/>
+    <require>org.nuxeo.web.ui</require>
 
-    <!-- append the translations -->
-    <append from="${bundle.fileName}.tmp/web/nuxeo.war/ui/i18n/messages.json"
-      to="nuxeo.war/ui/i18n/messages.json"/>
+    <install>
+        <!-- Install web resources, excluding i18n (handled separately) -->
+        <unzip from="${bundle.fileName}" to="/" prefix="web">
+            <include>web/nuxeo.war/**</include>
+            <exclude>web/nuxeo.war/ui/i18n/**</exclude>
+        </unzip>
 
-    <delete path="${bundle.fileName}.tmp"/>
-  </install>
+        <!-- Create a temporary folder -->
+        <delete path="${bundle.fileName}.tmp"/>
+        <mkdir path="${bundle.fileName}.tmp"/>
+        <unzip from="${bundle.fileName}" to="${bundle.fileName}.tmp">
+            <include>web/nuxeo.war/ui/i18n/**</include>
+        </unzip>
+
+        <!-- Append the translations to the existing Web UI ones -->
+        <append from="${bundle.fileName}.tmp/web/nuxeo.war/ui/i18n/messages.json" to="nuxeo.war/ui/i18n/messages.json" addNewLine="true"/>
+        <delete path="${bundle.fileName}.tmp"/>
+
+    </install>
 </fragment>

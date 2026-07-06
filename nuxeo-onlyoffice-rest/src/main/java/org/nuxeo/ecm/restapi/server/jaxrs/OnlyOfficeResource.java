@@ -7,20 +7,26 @@ import java.nio.charset.Charset;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import javax.ws.rs.Consumes;
-import javax.ws.rs.GET;
-import javax.ws.rs.POST;
-import javax.ws.rs.Path;
-import javax.ws.rs.PathParam;
-import javax.ws.rs.Produces;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.core.MediaType;
-import javax.ws.rs.core.Response;
-import javax.ws.rs.core.Response.Status;
-import javax.ws.rs.core.UriBuilder;
+import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.core.Response.Status;
+import jakarta.ws.rs.core.UriBuilder;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.nuxeo.ecm.automation.core.util.DocumentHelper;
 import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.Blobs;
@@ -37,16 +43,9 @@ import org.nuxeo.ecm.tokenauth.service.TokenAuthenticationService;
 import org.nuxeo.ecm.webengine.model.WebObject;
 import org.nuxeo.ecm.webengine.model.impl.DefaultObject;
 import org.nuxeo.runtime.api.Framework;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
-import com.sun.jersey.api.client.Client;
-import com.sun.jersey.api.client.ClientResponse;
-import com.sun.jersey.api.client.WebResource;
-import com.sun.jersey.api.client.config.ClientConfig;
-import com.sun.jersey.api.client.config.DefaultClientConfig;
 
 /**
  * This web object implements the Callback functionality specified by the OnlyOffice API. See:
@@ -57,7 +56,7 @@ import com.sun.jersey.api.client.config.DefaultClientConfig;
 @Produces(MediaType.APPLICATION_JSON)
 public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes {
 
-    protected static final Logger LOG = LoggerFactory.getLogger(OnlyOfficeResource.class);
+    protected static final Logger LOG = LogManager.getLogger(OnlyOfficeResource.class);
 
     /**
      * OnlyOffice api.js URL
@@ -75,17 +74,11 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
 
     private static final ObjectReader CALLBACK;
 
-    private static final Client CLIENT;
-
     private static final AtomicBoolean CONNECTED = new AtomicBoolean(false);
 
     static {
-        ObjectMapper mapper = new ObjectMapper();
+        var mapper = new ObjectMapper();
         CALLBACK = mapper.readerFor(OnlyOfficeCallback.class);
-
-        ClientConfig cc = new DefaultClientConfig();
-        cc.getProperties().put(ClientConfig.PROPERTY_FOLLOW_REDIRECTS, true);
-        CLIENT = Client.create(cc);
     }
 
     /*
@@ -111,26 +104,29 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
     }
 
     private boolean testAPIConnection(String url) {
-        WebResource resource = CLIENT.resource(url);
-        WebResource.Builder builder = resource.accept("application/javascript");
-        boolean success = false;
-        try {
-            ClientResponse response = builder.get(ClientResponse.class);
-            if (response.getStatus() < 200 || response.getStatus() >= 400) {
-                LOG.warn("Unable to reach ONLYOFFICE API: {}", response.getStatusInfo());
-            } else {
-                LOG.info("Connected to ONLYOFFICE Editor [{}] ({})", url, response.getStatus());
-                success = true;
+        if (url == null || url.isBlank()) {
+            return false;
+        }
+        var get = new HttpGet(url);
+        get.setHeader("Accept", "application/javascript");
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+                CloseableHttpResponse response = httpClient.execute(get)) {
+            int status = response.getStatusLine().getStatusCode();
+            if (status < 200 || status >= 400) {
+                LOG.warn("Unable to reach ONLYOFFICE API: {} {}", status, response.getStatusLine().getReasonPhrase());
+                return false;
             }
+            LOG.info("Connected to ONLYOFFICE Editor [{}] ({})", url, status);
+            return true;
         } catch (Exception ex) {
             LOG.warn("Error connecting to ONLYOFFICE API", ex);
+            return false;
         }
-        return success;
     }
 
     /**
      * Callback endpoint for OnlyOffice
-     * 
+     *
      * @param id document ID
      * @param xpath blob path
      * @param input input stream JSON
@@ -142,7 +138,7 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
     @Consumes(MediaType.APPLICATION_JSON)
     public Response postCallback(@PathParam("id") String id, @PathParam("xpath") String xpath, InputStream input) {
 
-        /**
+        /*
          * (from https://api.onlyoffice.com/editors/callback) Defines the status of the document. Can have the following
          * values: 0 - no document with the key identifier could be found, 1 - document is being edited, 2 - document is
          * ready for saving, 3 - document saving error has occurred, 4 - document is closed with no changes, 6 -
@@ -158,7 +154,7 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
                 LOG.debug(callback.toString());
             }
 
-            LOG.warn(callback.toString());
+            LOG.debug(callback.toString());
 
             int status = callback.getStatus();
             if (status >= 1 && status <= 6) {
@@ -180,16 +176,14 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
                         }
                     }
 
-                    WebResource resource = CLIENT.resource(callback.getUrl());
-                    WebResource.Builder builder = resource.accept(MediaType.WILDCARD);
-
-                    Blob saved = null;
-                    ClientResponse response = builder.get(ClientResponse.class);
-                    try (InputStream stream = response.getEntityInputStream()) {
+                    var get = new HttpGet(callback.getUrl());
+                    get.setHeader("Accept", MediaType.WILDCARD);
+                    Blob saved;
+                    try (CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+                            CloseableHttpResponse response = httpClient.execute(get);
+                            InputStream stream = response.getEntity().getContent()) {
                         saved = Blobs.createBlob(stream, original.getMimeType(), original.getEncoding());
                         saved.setFilename(original.getFilename());
-                    } finally {
-                        response.close();
                     }
 
                     DocumentHelper.addBlob(model.getProperty(xpath), saved);
@@ -245,7 +239,7 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
 
     /**
      * Redirect to open an OnlyOffice editor (example: for use in an iFrame)
-     * 
+     *
      * @param id document ID
      * @param xpath blob path
      * @param mode view mode
@@ -282,7 +276,7 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
             }
 
             if (blob == null) {
-                LOG.warn("Blob not found for OnlyOffice editor: " + id + "/" + xpath);
+                LOG.warn("Blob not found for OnlyOffice editor: {}/{}", id, xpath);
                 return Response.status(Status.NOT_FOUND).build();
             }
 
@@ -297,7 +291,7 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
 
             TokenAuthenticationService tokenSvc = Framework.getService(TokenAuthenticationService.class);
             String token = tokenSvc.acquireToken(user, APP_NAME, "editor", "Browser", "rw");
-            
+
             String nuxeoUrl = Framework.getProperty("nuxeo.url", "http://localhost:8080/nuxeo/");
             if (!nuxeoUrl.endsWith("/")) {
                 nuxeoUrl += "/";

@@ -8,19 +8,14 @@
   <vendor>Nuxeo</vendor>
   <installer restart="true" />
   <uninstaller restart="true" />
-  <!-- <hotreload-support>false</hotreload-support> -->
-  <!-- <require-terms-and-conditions-acceptance>false</require-terms-and-conditions-acceptance> -->
-  <!-- Nuxeo Validation: none | inprocess | primary_validation | nuxeo_certified -->
   <nuxeo-validation>none</nuxeo-validation>
-  <!-- Production State: production_ready | testing | proto -->
   <production-state>testing</production-state>
   <supported>false</supported>
-  <platforms>
-    <platform>server-@DISTRIB_VERSION@</platform>
-    <platform>server-@DISTRIB_VERSION@-HF*</platform>
-  </platforms>
+  <target-platform>
+    <name>lts</name>
+    <version>[@NUXEO_TARGET_VERSION@,)</version>
+  </target-platform>
   <license>Apache License, Version 2.0</license>
   <license-url>http://www.apache.org/licenses/LICENSE-2.0</license-url>
-  <!-- Visibility: PRIVATE | MARKETPLACE | DEV | PUBLIC -->
   <visibility>PUBLIC</visibility>
 </package>

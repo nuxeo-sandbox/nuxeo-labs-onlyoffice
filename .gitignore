@@ -31,3 +31,5 @@ bin/
 *-bak
 *.bak
 *.versionsBackup
+.opencode
+AGENTS.md

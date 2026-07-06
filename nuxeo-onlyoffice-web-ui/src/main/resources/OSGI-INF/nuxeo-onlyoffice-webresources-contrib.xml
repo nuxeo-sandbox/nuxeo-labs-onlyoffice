@@ -1,13 +1,14 @@
 <?xml version="1.0"?>
 <component name="org.nuxeo.onlyoffice.web.ui.resources.contrib">
-  <require>org.nuxeo.web.ui.resources</require>
 
+  <!-- Register the bundle entry-point HTML as a web resource -->
   <extension target="org.nuxeo.ecm.platform.WebResources" point="resources">
-    <resource name="nuxeo-onlyoffice.html" type="import" shrinkable="false">
+    <resource name="nuxeo-onlyoffice.html" type="import">
       <uri>/ui/nuxeo-onlyoffice/nuxeo-onlyoffice.html</uri>
     </resource>
   </extension>
 
+  <!-- Append our bundle to the web-ui Web Resources bundle -->
   <extension target="org.nuxeo.ecm.platform.WebResources" point="bundles">
     <bundle name="web-ui">
       <resources append="true">

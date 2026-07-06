@@ -1,7 +1,10 @@
 Manifest-Version: 1.0
-Bundle-ManifestVersion: 1
-Bundle-Name: Nuxeo OnlyOffice WebUI Resources
+Bundle-ManifestVersion: 2
+Bundle-Name: Nuxeo OnlyOffice Core
 Bundle-SymbolicName: org.nuxeo.onlyoffice.core;singleton:=true
 Bundle-Version: 1.0.0
 Bundle-Vendor: Nuxeo
-Nuxeo-Component: OSGI-INF/CoreExtensions.xml,OSGI-INF/onlyoffice-conversion-contrib.xml
+Bundle-ActivationPolicy: lazy
+Bundle-ClassPath: .
+Nuxeo-Component: OSGI-INF/CoreExtensions.xml,
+ OSGI-INF/onlyoffice-conversion-contrib.xml

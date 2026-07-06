@@ -8,8 +8,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import javax.ws.rs.core.MediaType;
-
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.nuxeo.ecm.core.api.Blob;
 import org.nuxeo.ecm.core.api.Blobs;
 import org.nuxeo.ecm.core.api.blobholder.BlobHolder;
@@ -22,336 +29,327 @@ import org.nuxeo.ecm.core.io.download.DownloadService;
 import org.nuxeo.ecm.platform.mimetype.interfaces.MimetypeRegistry;
 import org.nuxeo.ecm.tokenauth.service.TokenAuthenticationService;
 import org.nuxeo.runtime.api.Framework;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import com.sun.jersey.api.client.Client;
-import com.sun.jersey.api.client.WebResource;
-import com.sun.jersey.api.client.config.ClientConfig;
-import com.sun.jersey.api.client.config.DefaultClientConfig;
 
 public class OnlyOfficeConverter implements ExternalConverter {
 
-  private static final Logger LOG = LoggerFactory.getLogger(OnlyOfficeConverter.class);
+    private static final Logger LOG = LogManager.getLogger(OnlyOfficeConverter.class);
 
-  /**
-   * OnlyOffice conversion URL
-   */
-  public static final String CONV_URL = "onlyoffice.url.conversion";
+    /**
+     * OnlyOffice conversion URL
+     */
+    public static final String CONV_URL = "onlyoffice.url.conversion";
 
-  /**
-   * OnlyOffice conversion wait
-   */
-  public static final String CONV_WAIT = "onlyoffice.conversion.wait";
+    /**
+     * OnlyOffice conversion wait
+     */
+    public static final String CONV_WAIT = "onlyoffice.conversion.wait";
 
-  public static final String CONV_PARAM_ASYNC = "async";
+    public static final String CONV_PARAM_ASYNC = "async";
 
-  public static final String CONV_PARAM_SRC_TYPE = "srcType";
+    public static final String CONV_PARAM_SRC_TYPE = "srcType";
 
-  public static final String CONV_PARAM_DEST_TYPE = "destType";
+    public static final String CONV_PARAM_DEST_TYPE = "destType";
 
-  public static final String CONV_PARAM_CODE_PAGE = "codePage";
+    public static final String CONV_PARAM_CODE_PAGE = "codePage";
 
-  public static final String CONV_PARAM_DELIMITER = "delimiter";
+    public static final String CONV_PARAM_DELIMITER = "delimiter";
 
-  public static final String CONV_PARAM_THUMBNAIL = "thumbnail";
+    public static final String CONV_PARAM_THUMBNAIL = "thumbnail";
 
-  private ConverterDescriptor descriptor = null;
+    private ConverterDescriptor descriptor = null;
 
-  private MimetypeRegistry mimeTypeRegistry = null;
+    private MimetypeRegistry mimeTypeRegistry = null;
 
-  private DownloadService downloadService = null;
+    private DownloadService downloadService = null;
 
-  private Client client = null;
+    private String endpoint = null;
 
-  private String endpoint = null;
+    private long waitTime = 1000L;
 
-  private long waitTime = 1000L;
+    private ObjectWriter requestWriter = null;
 
-  private ObjectWriter requestWriter = null;
+    private ObjectReader responseReader = null;
 
-  private ObjectReader responseReader = null;
+    private List<ConversionCompatibility> compat = null;
 
-  private List<ConversionCompatibility> compat = null;
-
-  public OnlyOfficeConverter() {
-    super();
-  }
-
-  @Override
-  public void init(ConverterDescriptor descriptor) {
-    this.mimeTypeRegistry = Framework.getService(MimetypeRegistry.class);
-    this.downloadService = Framework.getService(DownloadService.class);
-
-    this.descriptor = descriptor;
-    this.endpoint = Framework.getProperty(CONV_URL);
-    try {
-      this.waitTime = Long.parseLong(Framework.getProperty(CONV_WAIT, "1000"));
-    } catch (NumberFormatException nfe) {
-      LOG.warn("Async Wait Time setting is invalid, ignoring: " + Framework.getProperty(CONV_WAIT), nfe);
+    public OnlyOfficeConverter() {
+        super();
     }
 
-    ObjectMapper mapper = new ObjectMapper();
-    this.requestWriter = mapper.writerFor(ConversionRequest.class);
-    this.responseReader = mapper.readerFor(ConversionResponse.class);
+    @Override
+    public void init(ConverterDescriptor descriptor) {
+        this.mimeTypeRegistry = Framework.getService(MimetypeRegistry.class);
+        this.downloadService = Framework.getService(DownloadService.class);
 
-    try (InputStream in = getClass().getResourceAsStream("/reference/conversion_matrix.json")) {
-      this.compat = mapper.readValue(in, new TypeReference<List<ConversionCompatibility>>() {
-      });
-    } catch (IOException iox) {
-
-    }
-  }
-
-  @Override
-  public BlobHolder convert(BlobHolder blobHolder, Map<String, Serializable> parameters) throws ConversionException {
-    Blob originalBlob = blobHolder.getBlob();
-    String path = blobHolder.getFilePath();
-
-    String srcType = findType(originalBlob.getMimeType(), originalBlob, parameters.get(CONV_PARAM_SRC_TYPE));
-    String destType = findType(this.descriptor.getDestinationMimeType(), null, parameters.get(CONV_PARAM_DEST_TYPE));
-
-    // Check compatibility
-    boolean compatConversion = false;
-    for (ConversionCompatibility cc : this.compat) {
-      if (cc.accepts(srcType, destType)) {
-        compatConversion = true;
-        break;
-      }
-    }
-    if (!compatConversion) {
-      String errMsg = String.format("Incompatible conversion: %s -> %s for blob %s", srcType, destType,
-          originalBlob.getFilename());
-      LOG.error(errMsg);
-      throw new ConversionException(errMsg);
-    }
-
-    TokenAuthenticationService tokens = Framework.getService(TokenAuthenticationService.class);
-    String token = null;
-
-    Blob conversion;
-    try {
-      // Prepare blob
-      String storeKey = this.downloadService.storeBlobs(Collections.singletonList(originalBlob));
-      token = tokens.acquireToken("Administrator", "ONLYOFFICE", storeKey, "ONLYOFFICE Conversion Service", "rw");
-
-      String nuxeoUrl = Framework.getProperty("nuxeo.url");
-      String url = nuxeoUrl + "/" + this.downloadService.getDownloadUrl(storeKey) + "?token=" + token;
-
-      // Create request
-      ConversionRequest request = new ConversionRequest();
-      request.setAsync("true".equals(getParam(parameters, CONV_PARAM_ASYNC, "true")));
-      request.setKey(storeKey);
-
-      request.setFileType(srcType);
-
-      request.setOutputType(destType);
-      request.setTitle(newFilename(originalBlob.getFilename(), destType));
-      request.setUrl(url);
-
-      if ("csv".equals(srcType)) {
-        handleCodePage(request, parameters);
-        handleDelimeter(request, parameters);
-      } else if ("txt".equals(srcType)) {
-        handleCodePage(request, parameters);
-      }
-
-      if ("bmp".equals(destType) || "gif".equals(destType) || "jpg".equals(destType) || "png".equals(destType)) {
-        if (parameters.containsKey("thumbnail")) {
-          handleThumbnail(request, parameters);
-        }
-      }
-
-      LOG.warn("{}", request);
-
-      conversion = convert(request);
-    } catch (IOException | InterruptedException | ConversionException e) {
-      throw new ConversionException("Cannot convert " + path + " to " + this.descriptor.getDestinationMimeType(), e);
-    } finally {
-      tokens.revokeToken(token);
-    }
-    return new SimpleBlobHolder(conversion);
-  }
-
-  private void handleDelimeter(ConversionRequest request, Map<String, Serializable> parameters) {
-    Serializable value = parameters.get(CONV_PARAM_DELIMITER);
-    int delimiter = ConversionConstants.DELIMITER_COMMA;
-    if (value != null) {
-      if (";".equals(value)) {
-        delimiter = ConversionConstants.DELIMITER_SEMICOLON;
-      } else if (":".equals(value)) {
-        delimiter = ConversionConstants.DELIMITER_COLON;
-      } else {
+        this.descriptor = descriptor;
+        this.endpoint = Framework.getProperty(CONV_URL);
         try {
-          delimiter = Integer.parseInt(value.toString());
-          if (delimiter < 0 || delimiter > 5) {
-            delimiter = ConversionConstants.DELIMITER_COMMA;
-            LOG.warn("Delimiter setting is invalid, ignoring: " + value);
-          }
+            this.waitTime = Long.parseLong(Framework.getProperty(CONV_WAIT, "1000"));
         } catch (NumberFormatException nfe) {
-          LOG.warn("Delimiter setting is invalid, ignoring: " + value, nfe);
+            LOG.warn("Async Wait Time setting is invalid, ignoring: {}", Framework.getProperty(CONV_WAIT), nfe);
         }
-      }
-    }
-    request.setDelimiter(delimiter);
-  }
 
-  private void handleCodePage(ConversionRequest request, Map<String, Serializable> parameters) {
-    Serializable value = parameters.get(CONV_PARAM_CODE_PAGE);
-    int code = ConversionConstants.CODE_UNICODE;
-    if (value != null) {
-      // TODO: Check reference table
-      try {
-        code = Integer.parseInt(value.toString());
-      } catch (NumberFormatException nfe) {
-        LOG.warn("Code page setting is invalid, ignoring: " + value, nfe);
-      }
-    }
-    request.setCodePage(code);
-  }
+        var mapper = new ObjectMapper();
+        this.requestWriter = mapper.writerFor(ConversionRequest.class);
+        this.responseReader = mapper.readerFor(ConversionResponse.class);
 
-  private void handleThumbnail(ConversionRequest request, Map<String, Serializable> parameters) {
-    Serializable value = parameters.get(CONV_PARAM_THUMBNAIL);
-    if (!"false".equals(value)) {
-      return;
-    }
-    ConversionRequest.Thumbnail thumb = request.createThumbnail();
-    if (value != null) {
-      if ("true".equals(value)) {
-        return;
-      }
-      String[] size = value.toString().split(":");
-      try {
-        if (size.length > 0) {
-          thumb.setHeight(Integer.parseInt(size[0]));
+        try (InputStream in = getClass().getResourceAsStream("/reference/conversion_matrix.json")) {
+            this.compat = mapper.readValue(in, new TypeReference<List<ConversionCompatibility>>() {
+            });
+        } catch (IOException iox) {
+            LOG.warn("Unable to load conversion compatibility matrix", iox);
         }
-        if (size.length > 1) {
-          thumb.setWidth(Integer.parseInt(size[1]));
-        } else if (size.length > 0) {
-          thumb.setWidth(thumb.getHeight());
+    }
+
+    @Override
+    public BlobHolder convert(BlobHolder blobHolder, Map<String, Serializable> parameters) throws ConversionException {
+        Blob originalBlob = blobHolder.getBlob();
+        String path = blobHolder.getFilePath();
+
+        String srcType = findType(originalBlob.getMimeType(), originalBlob, parameters.get(CONV_PARAM_SRC_TYPE));
+        String destType = findType(this.descriptor.getDestinationMimeType(), null, parameters.get(CONV_PARAM_DEST_TYPE));
+
+        // Check compatibility
+        boolean compatConversion = false;
+        for (ConversionCompatibility cc : this.compat) {
+            if (cc.accepts(srcType, destType)) {
+                compatConversion = true;
+                break;
+            }
         }
-        if (size.length > 2) {
-          thumb.setAspect(Integer.parseInt(size[2]));
+        if (!compatConversion) {
+            String errMsg = String.format("Incompatible conversion: %s -> %s for blob %s", srcType, destType,
+                    originalBlob.getFilename());
+            LOG.error(errMsg);
+            throw new ConversionException(errMsg);
         }
-      } catch (NumberFormatException nfe) {
-        LOG.warn("Height/Width/Aspect setting for thumbnail is not specific, ignoring: " + value, nfe);
-      }
-    }
-  }
 
-  private String getParam(Map<String, Serializable> parameters, String key, String defVal) {
-    if (parameters.containsKey(key)) {
-      return String.valueOf(parameters.get(key));
-    }
-    return defVal;
-  }
+        TokenAuthenticationService tokens = Framework.getService(TokenAuthenticationService.class);
+        String token = null;
 
-  private String findType(String mimeType, Blob blob, Serializable param) {
-    if (mimeType == null && blob != null) {
-      mimeType = blob.getMimeType();
-      if (mimeType == null) {
-        // Get from file
-        mimeType = this.mimeTypeRegistry.getMimetypeFromBlob(blob);
-      }
-    }
+        Blob conversion;
+        try {
+            // Prepare blob
+            String storeKey = this.downloadService.storeBlobs(Collections.singletonList(originalBlob));
+            token = tokens.acquireToken("Administrator", "ONLYOFFICE", storeKey, "ONLYOFFICE Conversion Service", "rw");
 
-    if (mimeType != null) {
-      List<String> types = this.mimeTypeRegistry.getExtensionsFromMimetypeName(mimeType);
-      if (!types.isEmpty()) {
-        return types.get(0);
-      }
-    } else if (param != null) {
-      return param.toString();
-    }
+            String nuxeoUrl = Framework.getProperty("nuxeo.url");
+            String url = nuxeoUrl + "/" + this.downloadService.getDownloadUrl(storeKey) + "?token=" + token;
 
-    throw new ConversionException("Unable to locate extension for type: " + mimeType);
-  }
+            // Create request
+            var request = new ConversionRequest();
+            request.setAsync("true".equals(getParam(parameters, CONV_PARAM_ASYNC, "true")));
+            request.setKey(storeKey);
 
-  private String newFilename(String original, String ext) {
-    if (original == null) {
-      return UUID.randomUUID().toString() + "." + ext;
-    }
-    int idx = original.lastIndexOf('.');
-    if (idx > 0) {
-      return original.substring(0, idx) + ext;
-    } else {
-      return original + "." + ext;
-    }
-  }
+            request.setFileType(srcType);
 
-  @Override
-  public ConverterCheckResult isConverterAvailable() {
-    if (this.endpoint == null || "".equals(this.endpoint.trim())) {
-      String err = "Please configure `onlyoffice.url.conversion` to enable conversion service.";
-      LOG.warn("ONLYOFFICE conversion disabled: " + err);
-      return new ConverterCheckResult("ONLYOFFICE installation required", err);
-    }
-    return new ConverterCheckResult();
-  }
+            request.setOutputType(destType);
+            request.setTitle(newFilename(originalBlob.getFilename(), destType));
+            request.setUrl(url);
 
-  private Blob convert(ConversionRequest request) throws IOException, InterruptedException {
-    // Request string remains the same for the life of the conversion
-    String json = this.requestWriter.writeValueAsString(request);
+            if ("csv".equals(srcType)) {
+                handleCodePage(request, parameters);
+                handleDelimeter(request, parameters);
+            } else if ("txt".equals(srcType)) {
+                handleCodePage(request, parameters);
+            }
 
-    boolean running = true;
-    ConversionResponse response = null;
+            if ("bmp".equals(destType) || "gif".equals(destType) || "jpg".equals(destType) || "png".equals(destType)) {
+                if (parameters.containsKey("thumbnail")) {
+                    handleThumbnail(request, parameters);
+                }
+            }
 
-    // Process request
-    while (running) {
-      // Ask for conversion / ask for update
-      response = submitRequest(json);
+            LOG.debug("{}", request);
 
-      // Break loop if complete/error
-      if (response.isFinished()) {
-        running = false;
-        break;
-      }
-
-      // Wait a bit...
-      LOG.warn("Waiting for {}", request);
-      Thread.sleep(this.waitTime);
+            conversion = convert(request);
+        } catch (IOException | InterruptedException | ConversionException e) {
+            if (e instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            throw new ConversionException("Cannot convert " + path + " to " + this.descriptor.getDestinationMimeType(),
+                    e);
+        } finally {
+            if (token != null) {
+                tokens.revokeToken(token);
+            }
+        }
+        return new SimpleBlobHolder(conversion);
     }
 
-    // Handle response
-    LOG.warn("{}", response);
-    if (response.isError()) {
-      // Report error and exit
-      return null;
-    } else {
-      // Retrieve content
-      return retrieveResponse(response);
+    private void handleDelimeter(ConversionRequest request, Map<String, Serializable> parameters) {
+        Serializable value = parameters.get(CONV_PARAM_DELIMITER);
+        int delimiter = ConversionConstants.DELIMITER_COMMA;
+        if (value != null) {
+            if (";".equals(value)) {
+                delimiter = ConversionConstants.DELIMITER_SEMICOLON;
+            } else if (":".equals(value)) {
+                delimiter = ConversionConstants.DELIMITER_COLON;
+            } else {
+                try {
+                    delimiter = Integer.parseInt(value.toString());
+                    if (delimiter < 0 || delimiter > 5) {
+                        delimiter = ConversionConstants.DELIMITER_COMMA;
+                        LOG.warn("Delimiter setting is invalid, ignoring: {}", value);
+                    }
+                } catch (NumberFormatException nfe) {
+                    LOG.warn("Delimiter setting is invalid, ignoring: {}", value, nfe);
+                }
+            }
+        }
+        request.setDelimiter(delimiter);
     }
-  }
 
-  private Client client() {
-    if (this.client == null) {
-      ClientConfig cc = new DefaultClientConfig();
-      cc.getProperties().put(ClientConfig.PROPERTY_FOLLOW_REDIRECTS, true);
-      this.client = Client.create(cc);
+    private void handleCodePage(ConversionRequest request, Map<String, Serializable> parameters) {
+        Serializable value = parameters.get(CONV_PARAM_CODE_PAGE);
+        int code = ConversionConstants.CODE_UNICODE;
+        if (value != null) {
+            // TODO: Check reference table
+            try {
+                code = Integer.parseInt(value.toString());
+            } catch (NumberFormatException nfe) {
+                LOG.warn("Code page setting is invalid, ignoring: {}", value, nfe);
+            }
+        }
+        request.setCodePage(code);
     }
-    return this.client;
-  }
 
-  private WebResource resource(final String endpoint) {
-    return client().resource(endpoint);
-  }
+    private void handleThumbnail(ConversionRequest request, Map<String, Serializable> parameters) {
+        Serializable value = parameters.get(CONV_PARAM_THUMBNAIL);
+        if (!"false".equals(value)) {
+            return;
+        }
+        ConversionRequest.Thumbnail thumb = request.createThumbnail();
+        if (value != null) {
+            if ("true".equals(value)) {
+                return;
+            }
+            String[] size = value.toString().split(":");
+            try {
+                if (size.length > 0) {
+                    thumb.setHeight(Integer.parseInt(size[0]));
+                }
+                if (size.length > 1) {
+                    thumb.setWidth(Integer.parseInt(size[1]));
+                } else if (size.length > 0) {
+                    thumb.setWidth(thumb.getHeight());
+                }
+                if (size.length > 2) {
+                    thumb.setAspect(Integer.parseInt(size[2]));
+                }
+            } catch (NumberFormatException nfe) {
+                LOG.warn("Height/Width/Aspect setting for thumbnail is not specific, ignoring: {}", value, nfe);
+            }
+        }
+    }
 
-  private ConversionResponse submitRequest(String request) throws IOException {
-    WebResource.Builder builder = resource(this.endpoint).accept(MediaType.APPLICATION_JSON);
-    builder = builder.entity(request, MediaType.APPLICATION_JSON);
-    String response = builder.post(String.class);
-    return this.responseReader.readValue(response);
-  }
+    private String getParam(Map<String, Serializable> parameters, String key, String defVal) {
+        if (parameters.containsKey(key)) {
+            return String.valueOf(parameters.get(key));
+        }
+        return defVal;
+    }
 
-  private Blob retrieveResponse(ConversionResponse response) throws IOException {
-    WebResource resource = resource(response.getFileUrl());
-    InputStream data = resource.get(InputStream.class);
-    Blob blob = Blobs.createBlob(data);
-    return blob;
-  }
+    private String findType(String mimeType, Blob blob, Serializable param) {
+        if (mimeType == null && blob != null) {
+            mimeType = blob.getMimeType();
+            if (mimeType == null) {
+                // Get from file
+                mimeType = this.mimeTypeRegistry.getMimetypeFromBlob(blob);
+            }
+        }
+
+        if (mimeType != null) {
+            List<String> types = this.mimeTypeRegistry.getExtensionsFromMimetypeName(mimeType);
+            if (!types.isEmpty()) {
+                return types.get(0);
+            }
+        } else if (param != null) {
+            return param.toString();
+        }
+
+        throw new ConversionException("Unable to locate extension for type: " + mimeType);
+    }
+
+    private String newFilename(String original, String ext) {
+        if (original == null) {
+            return UUID.randomUUID().toString() + "." + ext;
+        }
+        int idx = original.lastIndexOf('.');
+        if (idx > 0) {
+            return original.substring(0, idx) + ext;
+        } else {
+            return original + "." + ext;
+        }
+    }
+
+    @Override
+    public ConverterCheckResult isConverterAvailable() {
+        if (this.endpoint == null || "".equals(this.endpoint.trim())) {
+            String err = "Please configure `onlyoffice.url.conversion` to enable conversion service.";
+            LOG.warn("ONLYOFFICE conversion disabled: {}", err);
+            return new ConverterCheckResult("ONLYOFFICE installation required", err);
+        }
+        return new ConverterCheckResult();
+    }
+
+    private Blob convert(ConversionRequest request) throws IOException, InterruptedException {
+        // Request string remains the same for the life of the conversion
+        String json = this.requestWriter.writeValueAsString(request);
+
+        boolean running = true;
+        ConversionResponse response = null;
+
+        // Process request
+        while (running) {
+            // Ask for conversion / ask for update
+            response = submitRequest(json);
+
+            // Break loop if complete/error
+            if (response.isFinished()) {
+                running = false;
+                break;
+            }
+
+            // Wait a bit...
+            LOG.debug("Waiting for {}", request);
+            Thread.sleep(this.waitTime);
+        }
+
+        // Handle response
+        LOG.debug("{}", response);
+        if (response.isError()) {
+            // Report error and exit
+            return null;
+        } else {
+            // Retrieve content
+            return retrieveResponse(response);
+        }
+    }
+
+    private ConversionResponse submitRequest(String request) throws IOException {
+        var post = new HttpPost(this.endpoint);
+        post.setHeader("Accept", "application/json");
+        post.setEntity(new StringEntity(request, ContentType.APPLICATION_JSON));
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+                CloseableHttpResponse response = httpClient.execute(post);
+                InputStream content = response.getEntity().getContent()) {
+            return this.responseReader.readValue(content);
+        }
+    }
+
+    private Blob retrieveResponse(ConversionResponse response) throws IOException {
+        var get = new HttpGet(response.getFileUrl());
+        try (CloseableHttpClient httpClient = HttpClientBuilder.create().build();
+                CloseableHttpResponse httpResponse = httpClient.execute(get);
+                InputStream data = httpResponse.getEntity().getContent()) {
+            return Blobs.createBlob(data);
+        }
+    }
 
 }

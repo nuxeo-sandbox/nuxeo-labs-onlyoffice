@@ -1,8 +1,9 @@
 Manifest-Version: 1.0
-Bundle-ManifestVersion: 1
-Bundle-Name: nuxeo.onlyoffice.rest
+Bundle-ManifestVersion: 2
+Bundle-Name: Nuxeo OnlyOffice REST
 Bundle-SymbolicName: nuxeo.onlyoffice.rest;singleton:=true
-Fragment-Host: org.nuxeo.ecm.platform.restapi.server
-Bundle-Vendor: Nuxeo
 Bundle-Version: 1.0.0
-
+Bundle-Vendor: Nuxeo
+Bundle-ActivationPolicy: lazy
+Bundle-ClassPath: .
+Fragment-Host: org.nuxeo.ecm.platform.restapi.server

@@ -133,13 +133,16 @@ limitations under the License.
         return false;
       },
 
+      // Returns the OnlyOffice documentType (word/cell/slide) for a given mime type.
+      // Keep in sync with OnlyOfficeTypes.TEXT / SPREADSHEET / PRESENTATION on the Java side.
+      // OnlyOffice 9.x rejects the historical text/spreadsheet/presentation values.
       getDocumentType: function (mime) {
         if (this.presentationTypes.indexOf(mime) >= 0) {
-          return "presentation";
+          return "slide";
         } else if (this.spreadsheetTypes.indexOf(mime) >= 0) {
-          return "spreadsheet";
+          return "cell";
         }
-        return "text";
+        return "word";
       },
 
       isEditMode: function () {

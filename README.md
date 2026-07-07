@@ -1,17 +1,15 @@
 # Nuxeo ONLYOFFICE Integration
 
-[![Build Status](https://qa.nuxeo.org/jenkins/buildStatus/icon?job=Sandbox/sandbox_nuxeo-onlyoffice-master)](https://qa.nuxeo.org/jenkins/view/Sandbox/job/Sandbox/job/sandbox_nuxeo-onlyoffice-master/)
-
 In-browser integration of Nuxeo Platform and [ONLYOFFICE](https://www.onlyoffice.com/).
-
-> [!IMPORTANT]
-> Master branch is **Work in Progress** for upgrade to LTS2025. Do not use it as is.
 
 ## Dependencies
 
 [ONLYOFFICE](https://www.onlyoffice.com/) Document Server (Run a [Docker](https://github.com/ONLYOFFICE/Docker-DocumentServer) image)
 
-### ONLYOFFICE JWT is required
+## ONLYOFFICE JWT is required
+
+> [!IMPORTANT]
+> This is a breaking change from version 10.10-SNAPSHOT (for LTS 2019)
 
 ONLYOFFICE Document Server ≥ 7.x has JWT enabled by default, and this plugin signs every payload it sends (editor config, conversion request, blob download) and verifies the JWT on the save callback. Run the Document Server with JWT **enabled** and share the same secret with Nuxeo:
 
@@ -20,30 +18,13 @@ ONLYOFFICE Document Server ≥ 7.x has JWT enabled by default, and this plugin s
 
 The secret on both sides **must match**, otherwise the editor fails to open documents (`errorCode: -20`, "The document security token is not correctly formed") and save callbacks are rejected with `401`.
 
-JWT is on by default in the plugin (`onlyoffice.jwt.enabled=true`). It can be turned off with `onlyoffice.jwt.enabled=false` for a Document Server started with `JWT_ENABLED=false`, but this is **not recommended** and unsupported for production.
-
-## Build and Install
-
-Build with maven (at least 3.3)
-
-```
-mvn clean install
-```
-> Package built here: `nuxeo-onlyoffice-package/target`
-
-> Install with `nuxeoctl mp-install <package>`
+JWT is on by default in the plugin (`onlyoffice.jwt.enabled=true`). It can be turned off with `onlyoffice.jwt.enabled=false` for a Document Server started with `JWT_ENABLED=false`, but this is **not recommended**.
 
 ## Configure (nuxeo.conf)
 
-All properties below go into your Nuxeo configuration (`nuxeo.conf`, or a
-`nuxeo.conf` fragment — see [Docker deployment](#docker-deployment-browser-vs-container-urls)).
-You do **not** need to activate any template — the plugin reads these properties
-directly at runtime.
+All properties below go into your Nuxeo configuration (`nuxeo.conf`, or a `nuxeo.conf` fragment — see [Docker deployment](#docker-deployment-browser-vs-container-urls)).
 
-`nuxeo.url` is a **platform-wide** Nuxeo property (fully qualified instance URL,
-such as `https://my.nuxeo.org/nuxeo`) shared by many Nuxeo features (mail, share
-links, ...). It is usually already set on your instance; this plugin only reads
-it. Make sure it is correct — this plugin depends on it.
+`nuxeo.url` is a **platform-wide** Nuxeo property (fully qualified instance URL, like https://your.server.your.company.com/nuxeo. DO not forget the ending /nuxeo). Make sure it is correct — this plugin depends on it.
 
 Editor properties:
 
@@ -83,7 +64,7 @@ onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
 onlyoffice.conversion.wait=1000
 ```
 
-### Docker deployment (browser vs container URLs)
+## Docker deployment (browser vs container URLs)
 
 The usual way to configure the plugin in Docker is to drop a `nuxeo.conf`
 fragment into the mounted `conf.d/` directory — no template activation needed.
@@ -269,26 +250,58 @@ Invoke the conversion service to transform between a variety of content types.  
   </extension>
 ```
 
-# Support
+### How to Build and Deploy
+
+### Build and Deploy Locally
+
+```bash
+git clone https://github.com/nuxeo-sandbox/nuxeo-onlyoffice
+cd nuxeo-onlyoffice
+mvn clean install
+```
+
+To skip unit testing, add `-DskipTests`.
+
+The Marketplace package is generated at:
+
+```
+nuxeo-labs-baf-notification-package/target/nuxeo-onlyoffice-package-{VERSION}.zip
+```
+
+Install it via `nuxeoctl`:
+
+```bash
+nuxeoctl mp-install /path/to/nuxeo-onlyoffice-package-{VERSION}.zip
+```
+
+### Deploy from Nuxeo Marketplace
+
+This plugin is available as a package on the [Nuxeo Marketplace](https://connect.nuxeo.com/nuxeo/site/marketplace), you can just:
+
+```bash
+nuxeoctl mp-install nuxeo-onlyoffice
+
+```
+
+## Support
 
 **These features are not part of the Nuxeo Production platform.**
 
 These solutions are provided for inspiration and we encourage customers to use them as code samples and learning resources.
 
-This is a moving project (no API maintenance, no deprecation process, etc.) If any of these solutions are found to be useful for the Nuxeo Platform in general, they will be integrated directly into platform, not maintained here.
+This is a moving project (no API maintenance, no deprecation process, etc.) If any of these solutions are found to be useful for the Nuxeo Platform in general, they will be integrated directly into the platform, not maintained here.
 
-# License
+## License
 
 [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.html)
 
-# About Nuxeo
+## About Nuxeo
 
-Nuxeo Platform is an open source Content Services platform, written in Java. Data can be stored in both SQL & NoSQL databases.
+Nuxeo Platform is an open source highly scalable, cloud-native, enterprise content management product with rich multimedia support, written in Java. Data can be stored in both SQL & NoSQL databases.
 
 The development of the Nuxeo Platform is mostly done by Nuxeo employees with an open development model.
 
 The source code, documentation, roadmap, issue tracker, testing, benchmarks are all public.
 
-Typically, Nuxeo users build different types of information management solutions for [document management](https://www.nuxeo.com/solutions/document-management/), [case management](https://www.nuxeo.com/solutions/case-management/), and [digital asset management](https://www.nuxeo.com/solutions/dam-digital-asset-management/), use cases. It uses schema-flexible metadata & content models that allows content to be repurposed to fulfill future use cases.
+More information is available at [Hyland/Nuxeo](https://www.hyland.com/en/solutions/products/nuxeo-platform).
 
-More information is available at [www.nuxeo.com](https://www.nuxeo.com).

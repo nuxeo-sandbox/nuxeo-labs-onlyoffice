@@ -8,8 +8,8 @@
     <version>2025.21</version>
   </parent>
 
-  <groupId>org.nuxeo.onlyoffice</groupId>
-  <artifactId>nuxeo-onlyoffice-parent</artifactId>
+  <groupId>nuxeo.labs.onlyoffice</groupId>
+  <artifactId>nuxeo-labs-onlyoffice-parent</artifactId>
   <version>2025.1.0-SNAPSHOT</version>
 
   <name>Nuxeo OnlyOffice</name>
@@ -22,10 +22,10 @@
   </properties>
 
   <modules>
-    <module>nuxeo-onlyoffice-core</module>
-    <module>nuxeo-onlyoffice-rest</module>
-    <module>nuxeo-onlyoffice-web-ui</module>
-    <module>nuxeo-onlyoffice-package</module>
+    <module>nuxeo-labs-onlyoffice-core</module>
+    <module>nuxeo-labs-onlyoffice-rest</module>
+    <module>nuxeo-labs-onlyoffice-web-ui</module>
+    <module>nuxeo-labs-onlyoffice-package</module>
   </modules>
 
   <scm />
@@ -39,23 +39,23 @@
   <dependencyManagement>
     <dependencies>
       <dependency>
-        <groupId>org.nuxeo.onlyoffice</groupId>
-        <artifactId>nuxeo-onlyoffice-core</artifactId>
+        <groupId>nuxeo.labs.onlyoffice</groupId>
+        <artifactId>nuxeo-labs-onlyoffice-core</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>org.nuxeo.onlyoffice</groupId>
-        <artifactId>nuxeo-onlyoffice-rest</artifactId>
+        <groupId>nuxeo.labs.onlyoffice</groupId>
+        <artifactId>nuxeo-labs-onlyoffice-rest</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>org.nuxeo.onlyoffice</groupId>
-        <artifactId>nuxeo-onlyoffice-web-ui</artifactId>
+        <groupId>nuxeo.labs.onlyoffice</groupId>
+        <artifactId>nuxeo-labs-onlyoffice-web-ui</artifactId>
         <version>${project.version}</version>
       </dependency>
       <dependency>
-        <groupId>org.nuxeo.onlyoffice</groupId>
-        <artifactId>nuxeo-onlyoffice-package</artifactId>
+        <groupId>nuxeo.labs.onlyoffice</groupId>
+        <artifactId>nuxeo-labs-onlyoffice-package</artifactId>
         <version>${project.version}</version>
       </dependency>
     </dependencies>

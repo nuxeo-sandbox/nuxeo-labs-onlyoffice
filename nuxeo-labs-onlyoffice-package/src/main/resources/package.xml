@@ -1,10 +1,10 @@
 <!-- See documentation at http://doc.nuxeo.com/x/HgIz -->
-<package type="addon" name="onlyoffice-integration" version="@VERSION@">
+<package type="addon" name="nuxeo-labs-onlyoffice" version="@VERSION@">
   <title>ONLYOFFICE Document Editor Integration</title>
   <description>
     <p>Use ONLYOFFICE to seamlessly edit documents from the Nuxeo Platform</p>
   </description>
-  <home-page>https://github.com/nuxeo-sandbox/nuxeo-onlyoffice</home-page>
+  <home-page>https://github.com/nuxeo-sandbox/nuxeo-labs-onlyoffice</home-page>
   <vendor>Nuxeo</vendor>
   <installer restart="true" />
   <uninstaller restart="true" />

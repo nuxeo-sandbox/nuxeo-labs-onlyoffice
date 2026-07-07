@@ -69,12 +69,12 @@ public class OnlyOfficeConverter implements ExternalConverter {
     /**
      * OnlyOffice conversion URL
      */
-    public static final String CONV_URL = "onlyoffice.url.conversion";
+    public static final String CONV_URL = "nuxeo.labs.onlyoffice.url.conversion";
 
     /**
      * OnlyOffice conversion wait
      */
-    public static final String CONV_WAIT = "onlyoffice.conversion.wait";
+    public static final String CONV_WAIT = "nuxeo.labs.onlyoffice.conversion.wait";
 
     public static final String CONV_PARAM_ASYNC = "async";
 
@@ -321,7 +321,7 @@ public class OnlyOfficeConverter implements ExternalConverter {
     @Override
     public ConverterCheckResult isConverterAvailable() {
         if (this.endpoint == null || "".equals(this.endpoint.trim())) {
-            String err = "Please configure `onlyoffice.url.conversion` to enable conversion service.";
+            String err = "Please configure `nuxeo.labs.onlyoffice.url.conversion` to enable conversion service.";
             LOG.warn("ONLYOFFICE conversion disabled: {}", err);
             return new ConverterCheckResult("ONLYOFFICE installation required", err);
         }

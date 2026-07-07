@@ -92,12 +92,12 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
     /**
      * OnlyOffice api.js URL
      */
-    public static final String URL_API = "onlyoffice.url.api";
+    public static final String URL_API = "nuxeo.labs.onlyoffice.url.api";
 
     /**
      * Create a new document version on save callback.
      */
-    public static final String VERSION_ON_SAVE = "onlyoffice.version.save";
+    public static final String VERSION_ON_SAVE = "nuxeo.labs.onlyoffice.version.save";
 
     static final String APP_NAME = "OnlyOffice";
 
@@ -121,8 +121,8 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
         // Obtain API URL
         String apiUrl = Framework.getProperty(URL_API);
         if (apiUrl == null || "".equals(apiUrl.trim())) {
-            LOG.warn("ONLYOFFICE api.js URL has not been set, please set `onlyoffice.url.api` in nuxeo.conf."
-                    + "\n  onlyoffice.url.api=http://onlyoffice.host/web-apps/apps/api/documents/api.js");
+            LOG.warn("ONLYOFFICE api.js URL has not been set, please set `nuxeo.labs.onlyoffice.url.api` in nuxeo.conf."
+                    + "\n  nuxeo.labs.onlyoffice.url.api=http://onlyoffice.host/web-apps/apps/api/documents/api.js");
         }
 
         // Test client
@@ -363,7 +363,7 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
      * <p>
      * The config is assembled server-side (rather than in the JSP) because the JWT must be signed with the shared
      * secret, which must never reach the browser. The document/callback URLs use the internal (container-facing) base
-     * ({@code onlyoffice.url.nuxeo}, falling back to {@code nuxeo.url}); the "Open in Nuxeo" share link uses the public
+     * ({@code nuxeo.labs.onlyoffice.url.nuxeo}, falling back to {@code nuxeo.url}); the "Open in Nuxeo" share link uses the public
      * base ({@code nuxeo.url}). Client-only fields ({@code type}, {@code events}) are added by the JSP.
      *
      * @param id document ID
@@ -415,9 +415,9 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
             String token = tokenSvc.acquireToken(user, APP_NAME, "editor", "Browser", "rw");
 
             // Public base = browser-facing (nuxeo.url); internal base =
-            // container-facing (onlyoffice.url.nuxeo, falling back to nuxeo.url).
+            // container-facing (nuxeo.labs.onlyoffice.url.nuxeo, falling back to nuxeo.url).
             String publicBase = stripTrailingSlash(Framework.getProperty("nuxeo.url", "http://localhost:8080/nuxeo/"));
-            String internalBase = stripTrailingSlash(Framework.getProperty("onlyoffice.url.nuxeo"));
+            String internalBase = stripTrailingSlash(Framework.getProperty("nuxeo.labs.onlyoffice.url.nuxeo"));
             if (internalBase == null) {
                 internalBase = publicBase;
             }
@@ -491,7 +491,7 @@ public class OnlyOfficeResource extends DefaultObject implements OnlyOfficeTypes
             LOG.warn("Error building OnlyOffice config", pex);
             return Response.status(Status.NOT_FOUND).build();
         } catch (OnlyOfficeJwtException jwtEx) {
-            LOG.error("Cannot sign OnlyOffice config (check onlyoffice.jwt.* settings)", jwtEx);
+            LOG.error("Cannot sign OnlyOffice config (check nuxeo.labs.onlyoffice.jwt.* settings)", jwtEx);
             return Response.status(Status.INTERNAL_SERVER_ERROR).build();
         } catch (IOException iox) {
             LOG.error("Error serializing OnlyOffice config", iox);

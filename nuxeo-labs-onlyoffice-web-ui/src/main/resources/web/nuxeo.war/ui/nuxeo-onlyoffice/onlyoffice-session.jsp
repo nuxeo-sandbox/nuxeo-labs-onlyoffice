@@ -78,7 +78,7 @@ limitations under the License.
      * `nuxeo.url` is the public base; when unset we fall back to the browser's
      * `location.origin` + servlet context path.
      */
-    String api = Framework.getProperty("onlyoffice.url.api");
+    String api = Framework.getProperty("nuxeo.labs.onlyoffice.url.api");
     String publicBase = stripTrailingSlash(Framework.getProperty("nuxeo.url"));
     String contextPath = request.getContextPath();
   %>

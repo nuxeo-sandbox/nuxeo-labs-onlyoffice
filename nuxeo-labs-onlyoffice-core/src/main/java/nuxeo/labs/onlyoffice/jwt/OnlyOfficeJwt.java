@@ -56,22 +56,22 @@ public final class OnlyOfficeJwt {
     private static final Logger LOG = LogManager.getLogger(OnlyOfficeJwt.class);
 
     /** Master switch. Defaults to {@code true} — JWT is required by default. */
-    public static final String JWT_ENABLED = "onlyoffice.jwt.enabled";
+    public static final String JWT_ENABLED = "nuxeo.labs.onlyoffice.jwt.enabled";
 
     /** Shared HMAC secret. Must match the Document Server {@code JWT_SECRET}. */
-    public static final String JWT_SECRET = "onlyoffice.jwt.secret";
+    public static final String JWT_SECRET = "nuxeo.labs.onlyoffice.jwt.secret";
 
     /** Signing algorithm: {@code HS256} (default), {@code HS384} or {@code HS512}. */
-    public static final String JWT_ALGORITHM = "onlyoffice.jwt.algorithm";
+    public static final String JWT_ALGORITHM = "nuxeo.labs.onlyoffice.jwt.algorithm";
 
     /** HTTP header carrying the token for header-based requests. Defaults to {@code Authorization}. */
-    public static final String JWT_HEADER = "onlyoffice.jwt.header";
+    public static final String JWT_HEADER = "nuxeo.labs.onlyoffice.jwt.header";
 
     /** Prefix prepended to (and stripped from) the header token. Defaults to {@code "Bearer "}. */
-    public static final String JWT_PREFIX = "onlyoffice.jwt.prefix";
+    public static final String JWT_PREFIX = "nuxeo.labs.onlyoffice.jwt.prefix";
 
     /** Token time-to-live in seconds. Defaults to {@code 300}. */
-    public static final String JWT_TTL = "onlyoffice.jwt.ttl";
+    public static final String JWT_TTL = "nuxeo.labs.onlyoffice.jwt.ttl";
 
     public static final String DEFAULT_ALGORITHM = "HS256";
 
@@ -88,7 +88,7 @@ public final class OnlyOfficeJwt {
     }
 
     /**
-     * Returns {@code true} unless {@code onlyoffice.jwt.enabled} is explicitly set to {@code false}. When enabled but no
+     * Returns {@code true} unless {@code nuxeo.labs.onlyoffice.jwt.enabled} is explicitly set to {@code false}. When enabled but no
      * secret is configured, {@link #sign} / {@link #verify} throw — the misconfiguration is surfaced loudly rather than
      * silently disabling security.
      */

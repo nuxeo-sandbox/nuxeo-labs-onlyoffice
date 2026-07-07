@@ -1,4 +1,4 @@
-package org.nuxeo.ecm.restapi.server.jaxrs;
+package nuxeo.labs.onlyoffice.rest;
 
 import java.util.Date;
 import java.util.List;

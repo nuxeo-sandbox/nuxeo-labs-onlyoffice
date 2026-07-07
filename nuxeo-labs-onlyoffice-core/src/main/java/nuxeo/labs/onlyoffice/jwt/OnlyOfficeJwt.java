@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.nuxeo.ecm.onlyoffice.jwt;
+package nuxeo.labs.onlyoffice.jwt;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

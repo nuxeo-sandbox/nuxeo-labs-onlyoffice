@@ -1,4 +1,4 @@
-package org.nuxeo.ecm.onlyoffice.conversion;
+package nuxeo.labs.onlyoffice.conversion;
 
 import java.util.List;
 import java.util.Set;

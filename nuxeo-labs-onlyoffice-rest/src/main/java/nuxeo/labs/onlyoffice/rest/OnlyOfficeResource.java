@@ -1,4 +1,4 @@
-package org.nuxeo.ecm.restapi.server.jaxrs;
+package nuxeo.labs.onlyoffice.rest;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,8 +43,8 @@ import org.nuxeo.ecm.core.api.VersioningOption;
 import org.nuxeo.ecm.core.api.blobholder.BlobHolder;
 import org.nuxeo.ecm.core.api.versioning.VersioningService;
 import org.nuxeo.ecm.core.schema.FacetNames;
-import org.nuxeo.ecm.onlyoffice.jwt.OnlyOfficeJwt;
-import org.nuxeo.ecm.onlyoffice.jwt.OnlyOfficeJwtException;
+import nuxeo.labs.onlyoffice.jwt.OnlyOfficeJwt;
+import nuxeo.labs.onlyoffice.jwt.OnlyOfficeJwtException;
 import org.nuxeo.ecm.platform.mimetype.MimetypeNotFoundException;
 import org.nuxeo.ecm.platform.mimetype.interfaces.MimetypeRegistry;
 import org.nuxeo.ecm.tokenauth.service.TokenAuthenticationService;

@@ -1,4 +1,4 @@
-package org.nuxeo.ecm.onlyoffice.conversion;
+package nuxeo.labs.onlyoffice.conversion;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;

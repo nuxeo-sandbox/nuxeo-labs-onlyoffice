@@ -1,7 +1,7 @@
 Manifest-Version: 1.0
 Bundle-ManifestVersion: 2
 Bundle-Name: Nuxeo OnlyOffice Core
-Bundle-SymbolicName: org.nuxeo.onlyoffice.core;singleton:=true
+Bundle-SymbolicName: nuxeo.labs.onlyoffice.core;singleton:=true
 Bundle-Version: 1.0.0
 Bundle-Vendor: Nuxeo
 Bundle-ActivationPolicy: lazy

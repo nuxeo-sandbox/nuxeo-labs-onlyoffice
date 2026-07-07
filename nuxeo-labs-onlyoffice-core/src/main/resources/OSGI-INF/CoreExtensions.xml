@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<component name="org.nuxeo.onlyoffice.CoreExtensions" version="1.0">
+<component name="nuxeo.labs.onlyoffice.CoreExtensions" version="1.0">
 
     <extension target="org.nuxeo.ecm.core.schema.TypeService" point="schema">
         <schema name="onlyoffice" prefix="oo" src="schema/onlyoffice.xsd" />

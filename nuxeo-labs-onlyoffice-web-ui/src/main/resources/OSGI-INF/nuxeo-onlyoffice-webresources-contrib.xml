@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<component name="org.nuxeo.onlyoffice.web.ui.resources.contrib">
+<component name="nuxeo.labs.onlyoffice.web.ui.resources.contrib">
 
   <!-- Register the bundle entry-point HTML as a web resource -->
   <extension target="org.nuxeo.ecm.platform.WebResources" point="resources">

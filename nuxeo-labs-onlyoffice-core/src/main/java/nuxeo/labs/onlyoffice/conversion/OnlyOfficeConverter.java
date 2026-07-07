@@ -1,4 +1,4 @@
-package org.nuxeo.ecm.onlyoffice.conversion;
+package nuxeo.labs.onlyoffice.conversion;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,7 +26,7 @@ import org.nuxeo.ecm.core.convert.api.ConverterCheckResult;
 import org.nuxeo.ecm.core.convert.extension.ConverterDescriptor;
 import org.nuxeo.ecm.core.convert.extension.ExternalConverter;
 import org.nuxeo.ecm.core.io.download.DownloadService;
-import org.nuxeo.ecm.onlyoffice.jwt.OnlyOfficeJwt;
+import nuxeo.labs.onlyoffice.jwt.OnlyOfficeJwt;
 import org.nuxeo.ecm.platform.mimetype.interfaces.MimetypeRegistry;
 import org.nuxeo.ecm.tokenauth.service.TokenAuthenticationService;
 import org.nuxeo.runtime.api.Framework;

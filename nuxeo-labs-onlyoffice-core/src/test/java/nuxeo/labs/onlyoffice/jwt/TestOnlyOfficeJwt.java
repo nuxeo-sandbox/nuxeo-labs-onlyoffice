@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.nuxeo.ecm.onlyoffice.jwt;
+package nuxeo.labs.onlyoffice.jwt;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

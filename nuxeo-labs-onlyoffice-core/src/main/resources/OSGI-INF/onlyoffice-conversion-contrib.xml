@@ -1,10 +1,10 @@
 <?xml version="1.0"?>
-<component name="org.nuxeo.ecm.onlyoffice.conversion" version="1.0">
+<component name="nuxeo.labs.onlyoffice.conversion" version="1.0">
 
   <require>org.nuxeo.ecm.automation.server.auth.config</require>
   
   <extension target="org.nuxeo.ecm.core.convert.service.ConversionServiceImpl" point="converter">
-    <converter name="office2pdf" class="org.nuxeo.ecm.onlyoffice.conversion.OnlyOfficeConverter">
+    <converter name="office2pdf" class="nuxeo.labs.onlyoffice.conversion.OnlyOfficeConverter">
       <destinationMimeType>application/pdf</destinationMimeType>
       <sourceMimeType>text/xml</sourceMimeType>
       <sourceMimeType>text/html</sourceMimeType>

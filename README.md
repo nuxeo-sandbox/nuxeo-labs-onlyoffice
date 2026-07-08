@@ -22,194 +22,44 @@ JWT is on by default in the plugin (`nuxeo.labs.onlyoffice.jwt.enabled=true`). I
 
 ## Configure (nuxeo.conf)
 
-All properties below go into your Nuxeo configuration (`nuxeo.conf`, or a `nuxeo.conf` fragment — see [Docker deployment](#docker-deployment-browser-vs-container-urls)).
+### General Properties:
+* `nuxeo.url` is a **platform-wide** Nuxeo property and it must be set. (https://your.server.your.company.com/nuxeo. Do not forget the ending /nuxeo). Make sure it is correct, it is used used by ONLYOFFICE to download blobs and POST save callbacks.
+* `nuxeo.labs.onlyoffice.url.api`: URL to editor api.js service (required). This is the full URL to the Onlyoffice server:
+  `nuxeo.labs.onlyoffice.url.api={ONLYOFFICE_SERVER_URL}/web-apps/apps/api/documents/api.js`
+* `nuxeo.labs.onlyoffice.url.nuxeo` is optional and _may be_ interesting in some context, like running everything on your localhost (not recommended, it is complex, requires changes in your know_hosts, etc.). Plugin not tested in this context. Default to `nuxeo.url`
+* `nuxeo.labs.onlyoffice.version.save`: Create version on save (optional, default: `false`)
 
-`nuxeo.url` is a **platform-wide** Nuxeo property (fully qualified instance URL, like https://your.server.your.company.com/nuxeo. DO not forget the ending /nuxeo). Make sure it is correct — this plugin depends on it.
+### JWT properties (see [ONLYOFFICE JWT is required](#onlyoffice-jwt-is-required)):
+* `nuxeo.labs.onlyoffice.jwt.enabled`: Enable JWT signing/verification (optional, default: `true`)
+* `nuxeo.labs.onlyoffice.jwt.secret`: Shared secret — MUST match the Document Server JWT_SECRET (required when enabled)
+* `nuxeo.labs.onlyoffice.jwt.algorithm`: Signing algorithm: HS256 (default), HS384 or HS512. Must match the Document Server.
+* `nuxeo.labs.onlyoffice.jwt.header`: HTTP header carrying the token (optional, default: Authorization)
+* `nuxeo.labs.onlyoffice.jwt.prefix`: Token prefix (optional, default: "Bearer ")
+* `nuxeo.labs.onlyoffice.jwt.ttl`: Token time-to-live in seconds (optional, default: 300)
 
-Editor properties:
+### Conversion properties (Optional):
 
-```
-# URL to editor api.js service (required)
-nuxeo.labs.onlyoffice.url.api=http://onlyoffice/web-apps/apps/api/documents/api.js
-# Internal Nuxeo URL used by ONLYOFFICE to download blobs and POST save
-# callbacks (optional, default: falls back to nuxeo.url). See "Docker" below.
-nuxeo.labs.onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
-# Create version on save (optional, default: false)
-nuxeo.labs.onlyoffice.version.save=true|false
-```
+* `nuxeo.labs.onlyoffice.url.conversion`: URL to conversion service (see ONLYOFFICE docs)
+  `nuxeo.labs.onlyoffice.url.conversion={ONLYOFFICE_SERVER_URL}/ConvertService.ashx`
+* `nuxeo.labs.onlyoffice.conversion.wait`: Number of millisecond to wait between polling async request
+  `nuxeo.labs.onlyoffice.conversion.wait=1000
 
-JWT properties (see [ONLYOFFICE JWT is required](#onlyoffice-jwt-is-required)):
 
-```
-# Enable JWT signing/verification (optional, default: true)
-nuxeo.labs.onlyoffice.jwt.enabled=true
-# Shared secret — MUST match the Document Server JWT_SECRET (required when enabled)
-nuxeo.labs.onlyoffice.jwt.secret=<your-shared-secret>
-# Signing algorithm: HS256 (default), HS384 or HS512. Must match the Document Server.
-nuxeo.labs.onlyoffice.jwt.algorithm=HS256
-# HTTP header carrying the token (optional, default: Authorization)
-nuxeo.labs.onlyoffice.jwt.header=Authorization
-# Token prefix (optional, default: "Bearer ")
-nuxeo.labs.onlyoffice.jwt.prefix=Bearer
-# Token time-to-live in seconds (optional, default: 300)
-nuxeo.labs.onlyoffice.jwt.ttl=300
-```
-
-Conversion properties (Optional):
+### Example of Typical, Simple Configuration:
 
 ```
-# URL to conversion service (see ONLYOFFICE docs)
-nuxeo.labs.onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
-# Number of millisecond to wait between polling async request
+nuxeo.labs.onlyoffice.url.api=https://my-demo-acme-onlyoffice.cloud.nuxeo.com/web-apps/apps/api/documents/api.js
+# Using nuxeo.url
+#nuxeo.labs.onlyoffice.url.nuxeo=
+
+nuxeo.labs.onlyoffice.url.conversion=https://my-demo-acme-onlyoffice.cloud.nuxeo.com/ConvertService.ashx
 nuxeo.labs.onlyoffice.conversion.wait=1000
-```
 
-## Docker deployment (browser vs container URLs)
-
-The usual way to configure the plugin in Docker is to drop a `nuxeo.conf`
-fragment into the mounted `conf.d/` directory — no template activation needed.
-For example, keep a local `conf/` folder holding an `onlyoffice.conf` and mount
-it in your Compose file:
-
-```yaml
-volumes:
-  - ./conf:/etc/nuxeo/conf.d/:ro
-```
-
-Then put the properties below into `./conf/onlyoffice.conf`.
-
-When Nuxeo and ONLYOFFICE run in separate containers, a single URL cannot serve
-everyone: the browser and the ONLYOFFICE container reach Nuxeo through different
-hostnames. The plugin uses **two** Nuxeo base URLs to handle this.
-
-| Property | Consumed by | Must be reachable from | Purpose |
-|---|---|---|---|
-| `nuxeo.url` | Browser | End user's browser | "Open in Nuxeo" link |
-| `nuxeo.labs.onlyoffice.url.nuxeo` | ONLYOFFICE container | Document Server container | Blob download + save callback |
-| `nuxeo.labs.onlyoffice.url.api` | Browser | End user's browser | Loads the editor (`api.js`) |
-| `nuxeo.labs.onlyoffice.url.conversion` | Nuxeo (server) | Nuxeo container | `office2pdf` conversion calls |
-
-`nuxeo.labs.onlyoffice.url.nuxeo` falls back to `nuxeo.url` when unset, so on a
-single-machine (non-Docker) setup you only need `nuxeo.url`.
-
-Example for a Docker Compose setup where the ONLYOFFICE service is named
-`onlyoffice` and the Nuxeo service is named `nuxeo`, fronted by a public host:
-
-```
-# Browser-facing (public)
-nuxeo.url=https://nuxeo.example.com/nuxeo
-nuxeo.labs.onlyoffice.url.api=https://onlyoffice.example.com/web-apps/apps/api/documents/api.js
-
-# Container-facing (internal Docker network)
-nuxeo.labs.onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
-nuxeo.labs.onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
-```
-
-### Deploying with nuxeo-presales-docker
-
-If you use the [nuxeo-presales-docker](https://github.com/nuxeo-sandbox/nuxeo-presales-docker) tooling, add an `onlyoffice` service to your `docker-compose` file alongside the existing `nuxeo` / `mongo` / `opensearch` / `dashboards` services:
-
-```yaml
-services:
-  nuxeo:
-    # . . .
-  mongo:
-    # . . .
-  opensearch:
-    # . . .
-  dashboards:
-    # . . .
-  onlyoffice:
-    image: onlyoffice/documentserver:latest
-    hostname: onlyoffice
-    restart: unless-stopped
-    environment:
-      - "JWT_ENABLED=true"
-      - "JWT_SECRET=${JWT_SECRET}"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/healthcheck"]
-      interval: 1m
-      timeout: 30s
-      retries: 10
-      start_period: 2m
-    expose:
-      - 80
-    ports:
-      - "8888:80"
-    volumes:
-      - ./data/onlyoffice-test-onlyoffice:/var/www/onlyoffice/Data
-      - ./logs/onlyoffice:/var/log/onlyoffice
-      # Post-start patch that adds request-filtering-agent.allowPrivateIPAddress
-      # to /etc/onlyoffice/documentserver/local.json. Mounted so it can be run
-      # via docker compose exec once the OnlyOffice entrypoint has completed
-      # its own initialization of local.json (JWT secret generation, etc.).
-      - ./conf/onlyoffice-local.json:/tmp/onlyoffice-ssrf-patch.json:ro
-```
-
-Store the shared secret in your `.env` file so both the Document Server (`JWT_SECRET`) and Nuxeo (`nuxeo.labs.onlyoffice.jwt.secret`) use the **same** value:
-
-```
-# .env
-JWT_SECRET=change-me-to-a-strong-random-secret
-```
-
-Then, in your mounted Nuxeo `conf.d/` fragment (e.g. `./conf/onlyoffice.conf`), point the plugin at this stack and reuse the same secret:
-
-```
-# Browser-facing (public) — YOUR_NUXEO_SERVER is your published Nuxeo host
-nuxeo.url=https://YOUR_NUXEO_SERVER/nuxeo
-nuxeo.labs.onlyoffice.url.api=http://localhost:8888/web-apps/apps/api/documents/api.js
-
-# Container-facing (internal Docker network) — the OnlyOffice container reaches
-# Nuxeo through the compose service name (here: `nuxeo`) on its internal port
-nuxeo.labs.onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo
-nuxeo.labs.onlyoffice.url.conversion=http://onlyoffice/ConvertService.ashx
-
-# JWT — must match JWT_SECRET from the .env file above
+# JWT — MUST equalthe DS JWT_SECRET
 nuxeo.labs.onlyoffice.jwt.enabled=true
-nuxeo.labs.onlyoffice.jwt.secret=change-me-to-a-strong-random-secret
+nuxeo.labs.onlyoffice.jwt.secret=<the-secret>
+# All other parameters => default values
 ```
-
-> The `nuxeo.labs.onlyoffice.jwt.secret` value must be identical to the `JWT_SECRET` passed to the `onlyoffice` container. A mismatch causes `errorCode: -20` on open and `401` on save.
-
-> The `nuxeo.labs.onlyoffice.url.api=http://localhost:8888/...` above only works when the **browser runs on the same machine** as the containers (pure local dev). For any remote / published deployment, see the next section — the browser must reach the Document Server over public HTTPS.
-
-### Public / HTTPS deployment (e.g. AWS): OnlyOffice needs its own hostname
-
-The editor is loaded **by the end user's browser** (`api.js`, then a WebSocket to the Document Server). So on a published server the DS must be reachable over **public HTTPS**, not just on the internal Docker network. Since Nuxeo is served over HTTPS, an `http://` `api.js` is also blocked as mixed content.
-
-OnlyOffice does **not** support running under a sub-path (e.g. `/onlyoffice/`), so give it a **dedicated subdomain** fronted by your TLS-terminating reverse proxy. Example (validated with the [nuxeo-presales-docker](https://github.com/nuxeo-sandbox/nuxeo-presales-docker) tooling on AWS, which uses Apache + Certbot):
-
-1. **DNS**: add a record for the OnlyOffice subdomain (e.g. `my-instance-onlyoffice.example.com`) pointing at the same host (a `CNAME` to the Nuxeo FQDN, or an `A` record to the same IP).
-2. **Reverse proxy**: add a vhost that terminates TLS and proxies the subdomain to the DS container's published port (`8888` in the compose above), **including WebSocket**. With Apache:
-
-   ```apache
-   <VirtualHost _default_:443>
-       ServerName my-instance-onlyoffice.example.com
-       AllowEncodedSlashes NoDecode
-       ProxyPreserveHost On
-       ProxyAddHeaders Off
-       RequestHeader set X-Forwarded-Proto "https"
-
-       # WebSocket (co-editing) + HTTP on the same location
-       RewriteEngine On
-       RewriteCond %{HTTP:Upgrade} =websocket [NC]
-       RewriteRule /(.*) ws://127.0.0.1:8888/$1 [P,L]
-       RewriteCond %{HTTP:Upgrade} !=websocket [NC]
-       RewriteRule /(.*) http://127.0.0.1:8888/$1 [P,L]
-
-       ProxyPass        / http://127.0.0.1:8888/
-       ProxyPassReverse / http://127.0.0.1:8888/
-   </VirtualHost>
-   ```
-   (Enable `mod_proxy_wstunnel`; let Certbot add the `SSLCertificate*` lines.)
-3. **`nuxeo.labs.onlyoffice.url.api`**: point it at the subdomain (browser-facing, HTTPS):
-
-   ```
-   nuxeo.labs.onlyoffice.url.api=https://my-instance-onlyoffice.example.com/web-apps/apps/api/documents/api.js
-   ```
-
-The **DS → Nuxeo** direction (blob download + save callback) is separate. Prefer the internal Docker network (`nuxeo.labs.onlyoffice.url.nuxeo=http://nuxeo:8080/nuxeo`) rather than the public URL — a container reaching its host's own public IP often fails (NAT hairpinning). Because that internal URL is a private IP, the Document Server's SSRF filter blocks it by default, so enable `request-filtering-agent.allowPrivateIPAddress` in the DS `local.json` (the `onlyoffice-local.json` patch mounted in the compose above).
 
 ## (Optional) Use Conversion Service
 
@@ -255,23 +105,23 @@ Invoke the conversion service to transform between a variety of content types.  
 ### Build and Deploy Locally
 
 ```bash
-git clone https://github.com/nuxeo-sandbox/nuxeo-onlyoffice
-cd nuxeo-onlyoffice
+git clone https://github.com/nuxeo-sandbox/nuxeo-labs-onlyoffice
+cd nuxeo-labs-onlyoffice
 mvn clean install
 ```
 
 To skip unit testing, add `-DskipTests`.
 
-The Marketplace package is generated at:
+The [Marketplace package](https://connect.nuxeo.com/nuxeo/site/marketplace/package/nuxeo-labs-onlyoffice) available:
 
 ```
-nuxeo-labs-baf-notification-package/target/nuxeo-onlyoffice-package-{VERSION}.zip
+nuxeo-labs-baf-notification-package/target/nuxeo-labs-onlyoffice-package-{VERSION}.zip
 ```
 
 Install it via `nuxeoctl`:
 
 ```bash
-nuxeoctl mp-install /path/to/nuxeo-onlyoffice-package-{VERSION}.zip
+nuxeoctl mp-install /path/to/nuxeo-labs-onlyoffice-{VERSION}.zip
 ```
 
 ### Deploy from Nuxeo Marketplace

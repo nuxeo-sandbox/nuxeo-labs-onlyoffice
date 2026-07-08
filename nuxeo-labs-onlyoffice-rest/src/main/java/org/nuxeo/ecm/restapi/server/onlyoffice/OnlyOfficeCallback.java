@@ -18,7 +18,7 @@
  *     Thibaud Arguillere
  *       (Migration to LTS 2025 with the help of OpenCode / Claude Opus)
  */
-package nuxeo.labs.onlyoffice.rest;
+package org.nuxeo.ecm.restapi.server.onlyoffice;
 
 import java.util.Date;
 import java.util.List;

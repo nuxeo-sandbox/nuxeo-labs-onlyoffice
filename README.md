@@ -65,6 +65,9 @@ nuxeo.labs.onlyoffice.jwt.secret=<the-secret>
 
 Invoke the conversion service to transform between a variety of content types.  By default, the [office2pdf contribution](/nuxeo-onlyoffice-core/src/main/resources/OSGI-INF/onlyoffice-conversion-contrib.xml) will support PDF as a destination type.  See the [ONLYOFFICE Conversion API](https://api.onlyoffice.com/editors/conversionapi) for a full conversion matrix.
 
+> [!WARNING]
+> Because the plugin deploys the converter, a lot of conversions use Onlyoffice (see [the contribution](/nuxeo-onlyoffice-core/src/main/resources/OSGI-INF/onlyoffice-conversion-contrib.xml)). So, if, for example, you configure a Nuxeo application on your localhost without using Onlyoffice, think about _not_ installing the plugin in this configuraiton, or all the conversions will fail.
+
 ### Conversion Parameters
 
 |Key      |Description|Allowable Values|

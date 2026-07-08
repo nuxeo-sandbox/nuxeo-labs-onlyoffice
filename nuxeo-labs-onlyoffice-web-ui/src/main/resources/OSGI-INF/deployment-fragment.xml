@@ -19,6 +19,8 @@
 
         <!-- Append the translations to the existing Web UI ones -->
         <append from="${bundle.fileName}.tmp/web/nuxeo.war/ui/i18n/messages.json" to="nuxeo.war/ui/i18n/messages.json" addNewLine="true"/>
+        <append from="${bundle.fileName}.tmp/web/nuxeo.war/ui/i18n/messages-fr.json" to="nuxeo.war/ui/i18n/messages-fr.json" addNewLine="true"/>
+        <append from="${bundle.fileName}.tmp/web/nuxeo.war/ui/i18n/messages-fr.json" to="nuxeo.war/ui/i18n/messages-fr-FR.json" addNewLine="true"/>
         <delete path="${bundle.fileName}.tmp"/>
 
     </install>

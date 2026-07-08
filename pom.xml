@@ -10,7 +10,7 @@
 
   <groupId>nuxeo.labs.onlyoffice</groupId>
   <artifactId>nuxeo-labs-onlyoffice-parent</artifactId>
-  <version>2025.2.0-SNAPSHOT</version>
+  <version>2025.3.0-SNAPSHOT</version>
 
   <name>Nuxeo OnlyOffice</name>
   <description>Nuxeo OnlyOffice Integration</description>

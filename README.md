@@ -1,4 +1,4 @@
-# Nuxeo ONLYOFFICE Integration
+# Nuxeo Labs ONLYOFFICE Integration
 
 In-browser integration of Nuxeo Platform and [ONLYOFFICE](https://www.onlyoffice.com/).
 

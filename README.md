@@ -66,7 +66,7 @@ nuxeo.labs.onlyoffice.jwt.secret=<the-secret>
 Invoke the conversion service to transform between a variety of content types.  By default, the [office2pdf contribution](/nuxeo-onlyoffice-core/src/main/resources/OSGI-INF/onlyoffice-conversion-contrib.xml) will support PDF as a destination type.  See the [ONLYOFFICE Conversion API](https://api.onlyoffice.com/editors/conversionapi) for a full conversion matrix.
 
 > [!WARNING]
-> Because the plugin deploys the converter, a lot of conversions use Onlyoffice (see [the contribution](/nuxeo-onlyoffice-core/src/main/resources/OSGI-INF/onlyoffice-conversion-contrib.xml)). So, if, for example, you configure a Nuxeo application on your localhost without using Onlyoffice, think about _not_ installing the plugin in this configuraiton, or all the conversions will fail.
+> Because the plugin deploys the converter, a lot of conversions use Onlyoffice (see [the contribution](/nuxeo-onlyoffice-core/src/main/resources/OSGI-INF/onlyoffice-conversion-contrib.xml)), typically the Word/Excel/OpenOffice/HTML/... -> PDF, which includes preview, typically. So, if, for example, you configure a Nuxeo application on your localhost without using Onlyoffice, see below: "Foce Using the "any2pdf" converter".
 
 ### Conversion Parameters
 
@@ -101,6 +101,99 @@ Invoke the conversion service to transform between a variety of content types.  
       </operation>
     </chain>
   </extension>
+```
+
+#### Foce Using the "any2pdf" Converter
+
+"office2pdf" is always loaded _after_ "any2pdf", so it always used, by default, because Nuxeo loads all converters for given mime-types and use the _last_ one. ionce the plugin is deployed, the list for thes mime-types is ["any2pdf","office2pdf"] => "office2pdf" is always used.
+
+To avoid that, copy this XML in your Studio project. It re-declare "any2pdf" making sure it is called _after_ "office2pdf". After this XML is deployed, the list becomes ["any2pdf","office2pdf","any2pdf"] => "any2pdf". This means the smae contribution is registered twice but it is a minor overhead.
+
+```xml
+<!--
+==================================================================
+To be used ONLY if you don't want to use the "office2pdf" Onlyoffice converter.
+Re-register the platform "any2pdf" converter so it loads LAST
+Do not use it (or disable it) in Studio if you _want_ to use the "office2pdf" converter
+==================================================================
+Typically:
+- You are on localhost and did not deploy Onlyoffice
+- You are using an Onlyoffice server that is on another EC2 instance and you don't want
+  to send every file to this server (when displaying a preview etc.)
+
+
+Why this exists:
+* The plugin registers a converter office2pdf (OnlyOffice) that claims the same source
+  mime types → application/pdf as the platform's any2pdf (LibreOffice).
+* Automatic/preview conversion is mime-based, not name-based. getConverterName() returns
+  the _last_ converter registered for a source → destination pair. Since the plugin loads
+  after the platform, office2pdf wins and routes every "convert to PDF" through the
+  OnlyOffice DS — bad when DS is absent (local dev) or remote (inefficient on AWS).
+* There is no "disable" mechanism for converters
+* The fix: Re-declare any2pdf (identical definition) so it registers last and reclaims the`
+  mime pairs for LibreOffice.
+* What's preserved: office2pdf stays registered and can still be called explicitly by name
+  (e.g. Blob.Convert), since name-based calls bypass the mime table.
+
+The <require> guarantees load order (do not rely on the implicit "Studio loads last" behavior).
+-->
+<require>nuxeo.labs.onlyoffice.conversion</require>
+
+<extension target="org.nuxeo.ecm.core.convert.service.ConversionServiceImpl" point="converter">
+<converter name="any2pdf" class="org.nuxeo.ecm.platform.convert.plugins.LibreOfficeConverter"
+           bypassIfSameMimeType="true">
+  <destinationMimeType>application/pdf</destinationMimeType>
+
+  <sourceMimeType>application/pdf</sourceMimeType>
+  <sourceMimeType>application/json</sourceMimeType>
+  <sourceMimeType>text/xml</sourceMimeType>
+  <sourceMimeType>text/html</sourceMimeType>
+  <sourceMimeType>text/plain</sourceMimeType>
+  <sourceMimeType>text/partial</sourceMimeType>
+  <sourceMimeType>text/rtf</sourceMimeType>
+  <sourceMimeType>application/rtf</sourceMimeType>
+  <sourceMimeType>text/csv</sourceMimeType>
+  <sourceMimeType>text/tsv</sourceMimeType>
+
+  <!-- Microsoft office documents -->
+  <sourceMimeType>application/msword</sourceMimeType>
+  <sourceMimeType>application/vnd.ms-powerpoint</sourceMimeType>
+  <sourceMimeType>application/vnd.ms-excel</sourceMimeType>
+
+  <!-- Microsoft office 2007 documents -->
+  <sourceMimeType>application/vnd.openxmlformats-officedocument.wordprocessingml.document</sourceMimeType>
+  <sourceMimeType>application/vnd.openxmlformats-officedocument.presentationml.presentation</sourceMimeType>
+  <sourceMimeType>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</sourceMimeType>
+
+  <!-- OpenOffice.org 1.x documents -->
+  <sourceMimeType>application/vnd.sun.xml.writer</sourceMimeType>
+  <sourceMimeType>application/vnd.sun.xml.writer.template</sourceMimeType>
+  <sourceMimeType>application/vnd.sun.xml.impress</sourceMimeType>
+  <sourceMimeType>application/vnd.sun.xml.impress.template</sourceMimeType>
+  <sourceMimeType>application/vnd.sun.xml.calc</sourceMimeType>
+  <sourceMimeType>application/vnd.sun.xml.calc.template</sourceMimeType>
+  <sourceMimeType>application/vnd.sun.xml.draw</sourceMimeType>
+  <sourceMimeType>application/vnd.sun.xml.draw.template</sourceMimeType>
+
+  <!-- OpenOffice.org 2.x documents -->
+  <sourceMimeType>application/vnd.oasis.opendocument.spreadsheet</sourceMimeType>
+  <sourceMimeType>application/vnd.oasis.opendocument.spreadsheet-template</sourceMimeType>
+  <sourceMimeType>application/vnd.oasis.opendocument.text</sourceMimeType>
+  <sourceMimeType>application/vnd.oasis.opendocument.text-template</sourceMimeType>
+  <sourceMimeType>application/vnd.oasis.opendocument.presentation</sourceMimeType>
+  <sourceMimeType>application/vnd.oasis.opendocument.presentation-template</sourceMimeType>
+  <sourceMimeType>application/vnd.oasis.opendocument.graphics</sourceMimeType>
+  <sourceMimeType>application/vnd.oasis.opendocument.graphics-template</sourceMimeType>
+
+  <!-- WordPerfect -->
+  <sourceMimeType>application/wordperfect</sourceMimeType>
+
+  <parameters>
+    <parameter name="CommandLineName">soffice</parameter>
+    <parameter name="format">pdf</parameter>
+  </parameters>
+</converter>
+</extension>
 ```
 
 ### How to Build and Deploy
